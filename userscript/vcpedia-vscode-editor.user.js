@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         VCPedia ⇄ VSCode 外部编辑器
 // @namespace    vcpedia-vscode-editor
-// @version      0.2.5
+// @version      0.2.6
 // @description  在 vcpedia.cn 上发起编辑，用 VSCode 改，保存即预览，浏览器内提交
 // @match        https://vcpedia.cn/*
 // @grant        none
@@ -12,7 +12,7 @@
 (() => {
   'use strict';
 
-  console.info('[vcpedia-vscode] userscript 0.2.5 loaded');
+  console.info('[vcpedia-vscode] userscript 0.2.6 loaded');
 
   const WS_URL = 'ws://127.0.0.1:8927';
   const RECONNECT_MS = 1000;
@@ -605,6 +605,29 @@
     return null;
   }
 
+  function highlightText(node, start, length) {
+    const end = Math.min(node.nodeValue.length, start + length);
+    const range = document.createRange();
+    range.setStart(node, start);
+    range.setEnd(node, end);
+    const rect = range.getBoundingClientRect();
+    if (!rect || (!rect.width && !rect.height)) return false;
+    const top = rect.top + window.scrollY;
+    const left = rect.left + window.scrollX;
+    window.scrollTo({
+      top: Math.max(0, top - window.innerHeight / 2 + rect.height / 2),
+      behavior: 'auto',
+    });
+    const box = document.createElement('div');
+    box.style.cssText =
+      `position:absolute;left:${left}px;top:${top}px;width:${rect.width}px;height:${rect.height}px;` +
+      'pointer-events:none;z-index:2147482999;outline:2px solid #3366cc;' +
+      'background:rgba(51,102,204,.15);border-radius:2px;';
+    document.body.append(box);
+    setTimeout(() => box.remove(), 1600);
+    return true;
+  }
+
   function scrollToOccurrence(text, occurrence) {
     if (!text) return false;
     const root = document.querySelector('#mw-content-text');
@@ -615,14 +638,13 @@
     let node;
     while ((node = walker.nextNode())) {
       if (node.parentElement?.closest('script,style')) continue;
-      if (!node.nodeValue || !node.nodeValue.includes(text)) continue;
-      seen++;
-      if (seen < wanted) continue;
-      const el = node.parentElement;
-      el.scrollIntoView({ block: 'center' });
-      el.classList.add('vcpe-hit');
-      setTimeout(() => el.classList.remove('vcpe-hit'), 1600);
-      return true;
+      const value = node.nodeValue;
+      if (!value) continue;
+      let pos = -1;
+      while ((pos = value.indexOf(text, pos + 1)) >= 0) {
+        seen++;
+        if (seen >= wanted) return highlightText(node, pos, text.length);
+      }
     }
     return false;
   }
@@ -634,6 +656,10 @@
     for (const text of texts) {
       const el = findTextElement(root, text);
       if (!el) continue;
+      const node = [...el.childNodes].find(
+        (n) => n.nodeType === Node.TEXT_NODE && n.nodeValue.includes(text)
+      );
+      if (node) return highlightText(node, node.nodeValue.indexOf(text), text.length);
       el.scrollIntoView({ block: 'center' });
       el.classList.add('vcpe-hit');
       setTimeout(() => el.classList.remove('vcpe-hit'), 1600);

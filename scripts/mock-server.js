@@ -36,8 +36,8 @@ const wss = startWsServer({
               heading: -1,
               ratio: 0,
               center: true,
-              texts: ['我真的受伤了'],
-              text: '我真的受伤了',
+              texts: ['来来回回又几趟'],
+              text: '来来回回又几趟',
               occurrence: 1,
             })
           );
