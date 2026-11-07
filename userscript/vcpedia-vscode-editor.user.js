@@ -1,0 +1,455 @@
+// ==UserScript==
+// @name         VCPedia ⇄ VSCode 外部编辑器
+// @namespace    vcpedia-vscode-editor
+// @version      0.1.0
+// @description  在 vcpedia.cn 上发起编辑，用 VSCode 改，保存即预览，浏览器内提交
+// @match        https://vcpedia.cn/*
+// @grant        none
+// @run-at       document-idle
+// @noframes
+// ==/UserScript==
+
+(() => {
+  'use strict';
+
+  const WS_URL = 'ws://127.0.0.1:8927';
+  const RECONNECT_MS = 10000;
+
+  // ---------- 与站点 API 交互 ----------
+  const scriptPath = (window.mw && mw.config.get('wgScriptPath')) || '';
+  const apiUrl = `${location.origin}${scriptPath}/api.php`;
+
+  async function apiGet(params) {
+    const u = new URL(apiUrl);
+    u.search = new URLSearchParams({ format: 'json', formatversion: '2', ...params });
+    const r = await fetch(u, { credentials: 'same-origin' });
+    return r.json();
+  }
+
+  async function apiPost(params) {
+    const r = await fetch(apiUrl, {
+      method: 'POST',
+      credentials: 'same-origin',
+      body: new URLSearchParams({ format: 'json', formatversion: '2', ...params }),
+    });
+    return r.json();
+  }
+
+  // ---------- 连接 VSCode 扩展 ----------
+  let socket = null;
+  let connected = false;
+  let session = null; // { id, title, section, text, base, start, originalHtml, dirty }
+
+  function connect() {
+    try {
+      socket = new WebSocket(WS_URL);
+    } catch {
+      setTimeout(connect, RECONNECT_MS);
+      return;
+    }
+    socket.addEventListener('open', () => { connected = true; refreshStatus(); });
+    socket.addEventListener('close', () => {
+      connected = false;
+      refreshStatus();
+      setTimeout(connect, RECONNECT_MS);
+    });
+    socket.addEventListener('error', () => { try { socket.close(); } catch {} });
+    socket.addEventListener('message', (ev) => {
+      let msg;
+      try { msg = JSON.parse(ev.data); } catch { return; }
+      if (msg.type === 'update' && session && msg.sessionId === session.id) {
+        session.text = msg.text;
+        session.dirty = true;
+        schedulePreview();
+      }
+    });
+  }
+
+  function send(msg) {
+    if (!connected || !socket || socket.readyState !== WebSocket.OPEN) return false;
+    socket.send(JSON.stringify(msg));
+    return true;
+  }
+
+  // ---------- 界面 ----------
+  const css = `
+    .vcpe-fab{position:fixed;right:20px;bottom:24px;z-index:2147483000;display:flex;gap:8px;align-items:center;
+      background:#3366cc;color:#fff;border:none;border-radius:999px;padding:10px 16px;font-size:14px;font-weight:600;
+      box-shadow:0 2px 10px rgba(0,0,0,.3);cursor:pointer}
+    .vcpe-fab:hover{background:#2a56a8}
+    .vcpe-fab.offline{background:#72777d}
+    .vcpe-sec{margin-left:6px;padding:0 6px;border:1px solid #a2a9b1;border-radius:3px;font-size:12px;
+      text-decoration:none;background:#f8f9fa;color:#3366cc}
+    .vcpe-sec:hover{background:#eaf3ff}
+    .vcpe-bar{position:fixed;left:0;right:0;bottom:0;z-index:2147483001;display:flex;gap:10px;align-items:center;
+      flex-wrap:wrap;background:#fff;border-top:2px solid #3366cc;padding:10px 16px;
+      box-shadow:0 -2px 12px rgba(0,0,0,.15);font-size:14px;color:#202122}
+    .vcpe-bar .vcpe-title{font-weight:700;margin-right:4px}
+    .vcpe-bar .vcpe-status{color:#72777d}
+    .vcpe-bar input[type=text]{flex:1 1 260px;min-width:180px;padding:6px 10px;border:1px solid #a2a9b1;border-radius:4px}
+    .vcpe-bar button{padding:6px 14px;border-radius:4px;border:1px solid #a2a9b1;background:#f8f9fa;cursor:pointer}
+    .vcpe-bar button.vcpe-save{background:#3366cc;border-color:#3366cc;color:#fff;font-weight:600}
+    .vcpe-bar button:disabled{opacity:.5;cursor:not-allowed}
+    .vcpe-bar label{display:flex;align-items:center;gap:4px;white-space:nowrap}
+    body.vcpe-editing{padding-bottom:80px}
+  `;
+
+  function injectStyle() {
+    if (document.getElementById('vcpe-style')) return;
+    const s = document.createElement('style');
+    s.id = 'vcpe-style';
+    s.textContent = css;
+    document.head.append(s);
+  }
+
+  function ensureFab() {
+    if (document.getElementById('vcpe-fab')) return;
+    const btn = document.createElement('button');
+    btn.id = 'vcpe-fab';
+    btn.className = 'vcpe-fab';
+    btn.textContent = 'VSCode 编辑';
+    btn.addEventListener('click', () => startEdit(null));
+    document.body.append(btn);
+    refreshStatus();
+  }
+
+  function refreshStatus() {
+    const fab = document.getElementById('vcpe-fab');
+    if (fab) {
+      fab.classList.toggle('offline', !connected);
+      fab.title = connected ? 'VSCode 扩展已连接' : 'VSCode 扩展未运行（正在重试）';
+    }
+    const st = document.querySelector('.vcpe-status');
+    if (st) st.textContent = connected ? '已连接 VSCode' : 'VSCode 扩展未连接，等待重连…';
+  }
+
+  function addSectionButtons() {
+    const content = document.querySelector('#mw-content-text .mw-parser-output');
+    if (!content) return;
+    content.querySelectorAll('.mw-editsection a[href*="action=edit"]').forEach((a) => {
+      if (a.parentElement.querySelector('.vcpe-sec')) return;
+      const section = new URL(a.href, location.href).searchParams.get('section');
+      if (section == null) return;
+      const link = document.createElement('a');
+      link.className = 'vcpe-sec';
+      link.href = '#';
+      link.textContent = 'VSCode';
+      link.title = '用 VSCode 编辑本节';
+      link.addEventListener('click', (e) => { e.preventDefault(); startEdit(section); });
+      a.after(link);
+    });
+  }
+
+  function notify(text, ms = 3200) {
+    let el = document.getElementById('vcpe-toast');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'vcpe-toast';
+      el.style.cssText =
+        'position:fixed;right:20px;bottom:84px;z-index:2147483002;max-width:360px;' +
+        'background:#202122;color:#fff;padding:10px 14px;border-radius:6px;font-size:13px;' +
+        'box-shadow:0 2px 10px rgba(0,0,0,.35)';
+      document.body.append(el);
+    }
+    el.textContent = text;
+    el.style.display = 'block';
+    clearTimeout(el._t);
+    el._t = setTimeout(() => { el.style.display = 'none'; }, ms);
+  }
+
+  function bar() {
+    let el = document.querySelector('.vcpe-bar');
+    if (el) return el;
+    el = document.createElement('div');
+    el.className = 'vcpe-bar';
+    el.innerHTML = `
+      <span class="vcpe-title"></span>
+      <span class="vcpe-status"></span>
+      <input type="text" class="vcpe-summary" placeholder="编辑摘要">
+      <label><input type="checkbox" class="vcpe-minor"> 小编辑</label>
+      <button class="vcpe-save">保存更改</button>
+      <button class="vcpe-cancel">取消</button>
+    `;
+    document.body.append(el);
+    el.querySelector('.vcpe-save').addEventListener('click', submit);
+    el.querySelector('.vcpe-cancel').addEventListener('click', cancel);
+    return el;
+  }
+
+  function setBusy(busy) {
+    const el = document.querySelector('.vcpe-bar');
+    if (!el) return;
+    el.querySelector('.vcpe-save').disabled = busy;
+    el.querySelector('.vcpe-cancel').disabled = busy;
+  }
+
+  // ---------- 编辑会话 ----------
+  let previewTimer = null;
+  let previewSeq = 0;
+
+  function schedulePreview() {
+    const el = document.querySelector('.vcpe-bar .vcpe-status');
+    if (el) el.textContent = '预览更新中…';
+    clearTimeout(previewTimer);
+    previewTimer = setTimeout(renderPreview, 250);
+  }
+
+  async function startEdit(section) {
+    if (session) return;
+    if (!connected) {
+      notify('VSCode 扩展未运行：请先启动扩展（端口 8927）。');
+      return;
+    }
+    const title = mw.config.get('wgPageName');
+    if (!title) return;
+    const params = {
+      action: 'query',
+      prop: 'revisions',
+      rvprop: 'content|ids|timestamp',
+      rvslots: 'main',
+      titles: title,
+    };
+    if (section != null) params.rvsection = section;
+    const data = await apiGet(params);
+    const page = data?.query?.pages?.[0];
+    const rev = page?.revisions?.[0];
+    const slot = rev?.slots?.main;
+    if (!rev || !slot || slot.content == null) {
+      notify('无法获取页面源码：' + (slot?.nosuchsection ? '该章节不存在' : '未知错误'));
+      return;
+    }
+    const id = `s${Date.now()}`;
+    session = {
+      id,
+      title,
+      section: section == null ? null : Number(section),
+      text: slot.content,
+      base: rev.timestamp,
+      start: new Date().toISOString(),
+      patch: null,
+      fullOriginal: null,
+      dirty: false,
+    };
+    injectStyle();
+    const b = bar();
+    b.querySelector('.vcpe-title').textContent =
+      section == null ? title : `${title} § ${section}`;
+    b.querySelector('.vcpe-status').textContent = '已发送到 VSCode，等待编辑…';
+    b.querySelector('.vcpe-summary').value = '';
+    b.querySelector('.vcpe-minor').checked = false;
+    document.body.classList.add('vcpe-editing');
+    send({
+      type: 'open',
+      sessionId: id,
+      title,
+      section: session.section,
+      text: session.text,
+      revid: rev.revid,
+      basetimestamp: rev.timestamp,
+      starttimestamp: session.start,
+    });
+    renderPreview();
+  }
+
+  function sectionNodes(heading) {
+    const level = Number(heading.tagName.slice(1));
+    const parent = heading.parentNode;
+    const nodes = [];
+    let node = heading;
+    while (node && node.parentNode === parent) {
+      nodes.push(node);
+      node = node.nextElementSibling;
+      if (node && /^H[1-6]$/.test(node.tagName) && Number(node.tagName.slice(1)) <= level) break;
+    }
+    return nodes;
+  }
+
+  function findSectionHeading(root, section, parsedHeading) {
+    // 1. by the section number in the existing edit links
+    for (const a of root.querySelectorAll('.mw-editsection a[href*="action=edit"]')) {
+      const s = new URL(a.href, location.href).searchParams.get('section');
+      if (s === String(section)) return a.closest('h1,h2,h3,h4,h5,h6');
+    }
+    // 2. by the headline anchor id returned by the parser
+    const id = parsedHeading?.querySelector('.mw-headline')?.id;
+    if (id) {
+      for (const span of root.querySelectorAll('.mw-headline')) {
+        if (span.id === id) return span.closest('h1,h2,h3,h4,h5,h6');
+      }
+    }
+    return null;
+  }
+
+  function revertPatch() {
+    const patch = session && session.patch;
+    if (!patch) return;
+    for (const n of patch.inserted) n.remove();
+    const ref = patch.parent.contains(patch.next) ? patch.next : null;
+    for (const n of patch.oldNodes) patch.parent.insertBefore(n, ref);
+    session.patch = null;
+  }
+
+  function applySection(parsedHtml, section) {
+    const root = document.querySelector('#mw-content-text');
+    const temp = document.createElement('div');
+    temp.innerHTML = parsedHtml;
+    const newRoot = temp.firstElementChild;
+    if (!newRoot) return false;
+    const newHeading = newRoot.querySelector('h1,h2,h3,h4,h5,h6');
+    if (!newHeading) return false;
+    revertPatch();
+    const anchor = findSectionHeading(root, section, newHeading);
+    if (!anchor) return false;
+    const newNodes = sectionNodes(newHeading);
+    const oldNodes = sectionNodes(anchor);
+    if (!newNodes.length || !oldNodes.length) return false;
+    const parent = anchor.parentNode;
+    const next = oldNodes[oldNodes.length - 1].nextSibling;
+    for (const n of oldNodes) n.remove();
+    const inserted = [];
+    try {
+      for (const n of newNodes) {
+        parent.insertBefore(n, next);
+        inserted.push(n);
+      }
+    } catch (e) {
+      for (const n of inserted) n.remove();
+      for (const n of oldNodes) parent.insertBefore(n, next);
+      throw e;
+    }
+    session.patch = { parent, next, oldNodes, inserted };
+    return true;
+  }
+
+  function applyFull(html) {
+    const root = document.querySelector('#mw-content-text');
+    if (!session.fullOriginal) session.fullOriginal = [...root.childNodes];
+    const temp = document.createElement('div');
+    temp.innerHTML = html;
+    root.replaceChildren(...temp.childNodes);
+    if (window.mw?.hook && typeof jQuery === 'function') mw.hook('wikipage.content').fire(jQuery(root));
+  }
+
+  async function renderPreview() {
+    if (!session) return;
+    const seq = ++previewSeq;
+    const text = session.text;
+    const params = {
+      action: 'parse',
+      contentmodel: 'wikitext',
+      title: session.title,
+      text,
+      pst: '1',
+      preview: '1',
+      disableeditsection: '1',
+      disablelimitreport: '1',
+      prop: 'text|displaytitle|parsewarnings',
+    };
+    if (session.section != null) params.section = String(session.section);
+    let data;
+    try {
+      data = await apiPost(params);
+    } catch (e) {
+      if (seq === previewSeq) bar().querySelector('.vcpe-status').textContent = '预览失败：' + e.message;
+      return;
+    }
+    if (seq !== previewSeq) return;
+    if (data.error) {
+      bar().querySelector('.vcpe-status').textContent = '预览失败：' + data.error.info;
+      return;
+    }
+    const html = data.parse.text;
+    if (session.section == null) {
+      applyFull(html);
+    } else if (!applySection(html, session.section)) {
+      bar().querySelector('.vcpe-status').textContent =
+        '无法在页面中定位该章节，未应用预览（页面保持原样）';
+      return;
+    }
+    const st = bar().querySelector('.vcpe-status');
+    st.textContent = `预览已更新 ${new Date().toLocaleTimeString()}`;
+    addSectionButtons();
+  }
+
+  async function submit() {
+    if (!session) return;
+    const b = bar();
+    const summary = b.querySelector('.vcpe-summary').value.trim();
+    const minor = b.querySelector('.vcpe-minor').checked;
+    setBusy(true);
+    b.querySelector('.vcpe-status').textContent = '提交中…';
+    try {
+      const tok = await apiGet({ action: 'query', meta: 'tokens', type: 'csrf' });
+      const token = tok?.query?.tokens?.csrftoken;
+      if (!token) throw new Error('无法获取 CSRF token');
+      const params = {
+        action: 'edit',
+        title: session.title,
+        text: session.text,
+        summary,
+        minor: minor ? '1' : undefined,
+        token,
+        basetimestamp: session.base,
+        starttimestamp: session.start,
+        watchlist: 'nochange',
+      };
+      if (session.section != null) params.section = String(session.section);
+      const r = await apiPost(params);
+      if (r.error) {
+        if (r.error.code === 'editconflict') {
+          b.querySelector('.vcpe-status').textContent =
+            '保存冲突：页面在你编辑期间被修改，请取消后重新编辑。';
+          setBusy(false);
+          return;
+        }
+        throw new Error(r.error.info || r.error.code);
+      }
+      send({ type: 'finish', sessionId: session.id, result: 'saved', summary, minor });
+      session = null;
+      document.body.classList.remove('vcpe-editing');
+      b.remove();
+      location.reload();
+    } catch (e) {
+      b.querySelector('.vcpe-status').textContent = '提交失败：' + e.message;
+      setBusy(false);
+    }
+  }
+
+  function cancel() {
+    if (!session) return;
+    send({ type: 'finish', sessionId: session.id, result: 'cancelled' });
+    if (session.patch) revertPatch();
+    if (session.fullOriginal) {
+      const root = document.querySelector('#mw-content-text');
+      root.replaceChildren(...session.fullOriginal);
+      session.fullOriginal = null;
+      if (window.mw?.hook && typeof jQuery === 'function') {
+        mw.hook('wikipage.content').fire(jQuery(root));
+      }
+    }
+    session = null;
+    document.body.classList.remove('vcpe-editing');
+    document.querySelector('.vcpe-bar')?.remove();
+  }
+
+  // ---------- 启动 ----------
+  function boot() {
+    if (mw.config.get('wgAction') !== 'view') return;
+    injectStyle();
+    ensureFab();
+    addSectionButtons();
+    connect();
+    document.addEventListener('keydown', (e) => {
+      if (e.altKey && !e.ctrlKey && !e.metaKey && e.key.toLowerCase() === 'e') {
+        e.preventDefault();
+        startEdit(null);
+      }
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot);
+  } else {
+    boot();
+  }
+})();

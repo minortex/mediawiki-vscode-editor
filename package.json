@@ -1,0 +1,53 @@
+{
+  "name": "vcpedia-vscode-editor",
+  "displayName": "VCPedia ⇄ VSCode External Editor",
+  "description": "Edit vcpedia.cn pages in VSCode; the browser previews on save and performs the edit",
+  "version": "0.1.0",
+  "publisher": "local",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "vcpediaEditor.push",
+        "title": "VCPedia: 立即推送当前文件预览"
+      },
+      {
+        "command": "vcpediaEditor.status",
+        "title": "VCPedia: 显示连接状态"
+      }
+    ],
+    "configuration": {
+      "title": "VCPedia External Editor",
+      "properties": {
+        "vcpediaEditor.port": {
+          "type": "number",
+          "default": 8927,
+          "description": "本地 WebSocket 端口，需与用户脚本中的 WS_URL 一致。"
+        },
+        "vcpediaEditor.tempDir": {
+          "type": "string",
+          "default": "",
+          "description": "源码落盘目录。留空则使用系统临时目录下的 vcpedia-edit。"
+        },
+        "vcpediaEditor.allowedOrigin": {
+          "type": "string",
+          "default": "https://vcpedia.cn",
+          "description": "允许连接的用户脚本来源，防止其它网页复用该端口。"
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "ws": "^8.22.1"
+  }
+}
