@@ -4,7 +4,7 @@
 
 ## 组成
 
-- `userscript/vcpedia-vscode-editor.user.js`：Tampermonkey 脚本，运行在 vcpedia.cn 页面里。
+RTY-MARKER- `userscript/vcpedia-vscode-editor.user.js`：Tampermonkey 脚本，运行在 vDIRTYDIRTYcpedia.cn 页面里
 - 本 VSCode 扩展：本地 WebSocket 服务（默认 `127.0.0.1:8927`），把页面源码落到临时文件，保存时把内容推回浏览器。
 
 内容方向：
@@ -69,10 +69,13 @@ VSCode 设置：
 - 提交完全由浏览器完成，扩展不接触账号密码。
 - 章节编辑只把该节文本送到 VSCode，提交时使用 `section=N`，由 MediaWiki 拼回整页；冲突检测仍基于整页 `basetimestamp`。
 
-## 本地联调
+## 联调
+
+无法自动化的浏览器侧状态（例如 VSCode 的未保存状态）可以用一个只实现协议的后端模拟：
 
 ```sh
-node scripts/mock-server.js    # 模拟 VSCode 端，收到 open 后回一个改过的 update
+MOCK_MODE=dirty node scripts/mock-server.js   # 回一条 state(dirty:true)
+MOCK_MODE=update node scripts/mock-server.js  # 回一条 update(text + 标记)
 ```
 
-然后在浏览器 DevTools 里粘贴用户脚本内容（或把它装进 Tampermonkey），点击编辑按钮观察预览。
+它不打开编辑器，仅用于验证浏览器端交互。正常运行不需要它。

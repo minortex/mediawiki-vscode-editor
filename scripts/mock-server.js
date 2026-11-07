@@ -1,33 +1,48 @@
 'use strict';
 
-// 仅用于本地测试：模拟 VSCode 扩展的协议行为。
+// 开发联调用的假 VSCode 后端：只实现协议，不打开编辑器。
+//   MOCK_MODE=dirty   收到 open 后回一条 state(dirty:true)   （默认）
+//   MOCK_MODE=update  收到 open 后回一条 update(text+标记)
+//   MOCK_PORT=8927    监听端口
 const { startWsServer } = require('../lib/ws-server');
 
+const mode = process.env.MOCK_MODE || 'dirty';
+const port = Number(process.env.MOCK_PORT || 8927);
+
 const wss = startWsServer({
-  port: 8927,
+  port,
   allowedOrigin: 'https://vcpedia.cn',
   onConnection: () => console.log('[mock] browser connected'),
-  onError: (err) => console.error('[mock] error:', err.message),
+  onError: (err) => {
+    console.error('[mock] error:', err.message);
+    process.exit(1);
+  },
   onMessage: (msg, ws) => {
     console.log(
       '[mock] recv',
       msg.type,
       'session=' + msg.sessionId,
       'title=' + msg.title,
-      'section=' + msg.section,
-      'len=' + (msg.text || '').length
+      'section=' + msg.section
     );
     if (msg.type === 'open') {
-      setTimeout(() => {
-        const edited = String(msg.text) + '\n\nVSCode 测试标记';
-        ws.send(JSON.stringify({ type: 'update', sessionId: msg.sessionId, text: edited }));
-        console.log('[mock] sent update, len=' + edited.length);
-      }, 800);
+      if (mode === 'update') {
+        setTimeout(() => {
+          const text = String(msg.text) + '\n\nVSCode 测试标记';
+          ws.send(JSON.stringify({ type: 'update', sessionId: msg.sessionId, text }));
+          console.log('[mock] sent update');
+        }, 600);
+      } else {
+        setTimeout(() => {
+          ws.send(JSON.stringify({ type: 'state', sessionId: msg.sessionId, dirty: true }));
+          console.log('[mock] sent state dirty');
+        }, 400);
+      }
     }
     if (msg.type === 'finish') {
-      console.log('[mock] finish result=' + msg.result, 'summary=' + msg.summary);
+      console.log('[mock] finish', msg.result, msg.summary || '');
     }
   },
 });
 
-wss.on('listening', () => console.log('[mock] ws listening on 8927'));
+wss.on('listening', () => console.log(`[mock] ws on ${port}, mode=${mode}`));

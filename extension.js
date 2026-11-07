@@ -11,8 +11,11 @@ let statusBar = null;
 
 const sessions = new Map(); // sessionId -> { fsPath, ws, title, section }
 const byPath = new Map(); // fsPath -> sessionId
-const pendingDelete = new Set(); // fsPath awaiting a successful close
 const wsSessions = new Map(); // ws -> Set<sessionId>
+const dirtyTimers = new Map(); // fsPath -> timeout
+
+// 只有这些结果代表用户在页面上明确确认过，才允许删除临时文件
+const DELETE_RESULTS = new Set(['saved', 'unchanged', 'discarded']);
 
 function config() {
   return vscode.workspace.getConfiguration('vcpediaEditor');
@@ -20,6 +23,14 @@ function config() {
 
 function safeName(title) {
   return title.replace(/[\\/:*?"<>|\r\n]/g, '_');
+}
+
+function stamp(date = new Date()) {
+  const p = (n) => String(n).padStart(2, '0');
+  return (
+    `${date.getFullYear()}${p(date.getMonth() + 1)}${p(date.getDate())}` +
+    `-${p(date.getHours())}${p(date.getMinutes())}${p(date.getSeconds())}`
+  );
 }
 
 function updateStatus() {
@@ -48,69 +59,41 @@ function push(doc) {
   return count > 0;
 }
 
-async function removeFile(fsPath) {
-  pendingDelete.delete(fsPath);
+function notifyDirty(doc) {
+  const sessionId = byPath.get(doc.uri.fsPath);
+  if (!sessionId || !wss) return;
+  broadcast(wss, { type: 'state', sessionId, dirty: doc.isDirty });
+}
+
+async function closeAndDelete(fsPath) {
+  const doc = vscode.workspace.textDocuments.find((d) => d.uri.fsPath === fsPath);
+  if (doc && doc.isDirty) {
+    // 用户已在页面上确认，先把内容刷到临时文件，避免再弹一次保存提示
+    try {
+      await doc.save();
+    } catch {}
+  }
+  const tab = vscode.window.tabGroups?.all
+    ?.flatMap((group) => group.tabs)
+    .find((t) => t.input?.uri?.fsPath === fsPath);
+  if (tab) {
+    try {
+      await vscode.window.tabGroups.close(tab);
+    } catch {}
+  }
   try {
     await fs.promises.unlink(fsPath);
   } catch {}
-}
-
-/**
- * Close the editor for this session. If the buffer has unsaved changes VSCode
- * shows its own save prompt; the temporary file is removed only after the
- * document really closes.
- */
-async function closeDocAndFile(fsPath) {
-  pendingDelete.add(fsPath);
-  try {
-    const tab = vscode.window.tabGroups?.all
-      ?.flatMap((group) => group.tabs)
-      .find((t) => t.input?.uri?.fsPath === fsPath);
-    if (tab) {
-      const closed = await vscode.window.tabGroups.close(tab);
-      if (closed === false) return; // user kept it open in the save prompt
-      await removeFile(fsPath);
-      return;
-    }
-    const doc = vscode.workspace.textDocuments.find((d) => d.uri.fsPath === fsPath);
-    if (!doc) {
-      await removeFile(fsPath);
-      return;
-    }
-    await vscode.window.showTextDocument(doc, { preview: false });
-    await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
-  } catch {
-    // fall back to onDidCloseTextDocument, which still holds pendingDelete
-  }
 }
 
 async function openSession(msg, ws) {
   const dir = config().get('tempDir') || path.join(os.tmpdir(), 'vcpedia-edit');
   await fs.promises.mkdir(dir, { recursive: true });
   const suffix = msg.section != null ? `.s${msg.section}` : '';
-  const fsPath = path.join(dir, `${safeName(msg.title)}${suffix}.wiki`);
-
-  let doc = vscode.workspace.textDocuments.find((d) => d.uri.fsPath === fsPath);
-  if (doc && doc.isDirty) {
-    vscode.window.showWarningMessage(
-      `VCPedia: ${path.basename(fsPath)} 还有未保存修改，未覆盖。先保存或关闭它再重新发起编辑。`
-    );
-    await vscode.window.showTextDocument(doc, { preview: false });
-    return;
-  }
-
-  const previous = byPath.get(fsPath);
-  if (previous) {
-    await finishSession({ sessionId: previous, result: 'replaced' });
-  }
-  if (doc) {
-    await vscode.window.showTextDocument(doc, { preview: false });
-    await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
-    doc = undefined;
-  }
+  const fsPath = path.join(dir, `${safeName(msg.title)}${suffix}.${stamp()}.wiki`);
 
   await fs.promises.writeFile(fsPath, msg.text, 'utf8');
-  doc = await vscode.workspace.openTextDocument(vscode.Uri.file(fsPath));
+  const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(fsPath));
   await vscode.window.showTextDocument(doc, { preview: false });
 
   sessions.set(msg.sessionId, {
@@ -131,15 +114,24 @@ async function openSession(msg, ws) {
 
 async function finishSession(msg) {
   const meta = sessions.get(msg.sessionId);
-  sessions.delete(msg.sessionId);
   if (!meta) return;
+  sessions.delete(msg.sessionId);
   byPath.delete(meta.fsPath);
   wsSessions.get(meta.ws)?.delete(msg.sessionId);
-  await closeDocAndFile(meta.fsPath);
+  clearTimeout(dirtyTimers.get(meta.fsPath));
+  dirtyTimers.delete(meta.fsPath);
+
+  if (!DELETE_RESULTS.has(msg.result)) {
+    // closed / 断线 / 未知状态：保留编辑器与文件，绝不自动删除
+    vscode.window.showWarningMessage(
+      `VCPedia: 编辑会话已断开，临时文件保留：${meta.fsPath}`
+    );
+    return;
+  }
+
+  await closeAndDelete(meta.fsPath);
   vscode.window.setStatusBarMessage(
-    msg.result === 'saved'
-      ? 'VCPedia: 已在浏览器提交保存'
-      : 'VCPedia: 编辑会话已结束',
+    msg.result === 'saved' ? 'VCPedia: 已在浏览器提交保存' : 'VCPedia: 编辑会话已结束',
     5000
   );
 }
@@ -172,7 +164,7 @@ function activate(context) {
         const ids = wsSessions.get(ws) || new Set();
         wsSessions.delete(ws);
         for (const sessionId of ids) {
-          finishSession({ sessionId, result: 'closed' }).catch(() => {});
+          finishSession({ sessionId, result: 'disconnected' }).catch(() => {});
         }
         updateStatus();
       });
@@ -209,10 +201,21 @@ function activate(context) {
       );
     }),
     vscode.workspace.onDidSaveTextDocument((doc) => {
-      if (byPath.has(doc.uri.fsPath)) push(doc);
+      if (!byPath.has(doc.uri.fsPath)) return;
+      push(doc);
+      notifyDirty(doc);
     }),
-    vscode.workspace.onDidCloseTextDocument((doc) => {
-      if (pendingDelete.has(doc.uri.fsPath)) removeFile(doc.uri.fsPath);
+    vscode.workspace.onDidChangeTextDocument((event) => {
+      const fsPath = event.document.uri.fsPath;
+      if (!byPath.has(fsPath)) return;
+      clearTimeout(dirtyTimers.get(fsPath));
+      dirtyTimers.set(
+        fsPath,
+        setTimeout(() => {
+          dirtyTimers.delete(fsPath);
+          notifyDirty(event.document);
+        }, 120)
+      );
     })
   );
 }

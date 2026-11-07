@@ -57,10 +57,14 @@
     socket.addEventListener('message', (ev) => {
       let msg;
       try { msg = JSON.parse(ev.data); } catch { return; }
-      if (msg.type === 'update' && session && msg.sessionId === session.id) {
+      if (!session || msg.sessionId !== session.id) return;
+      if (msg.type === 'update') {
         session.text = msg.text;
-        session.dirty = true;
+        session.changed = true;
         schedulePreview();
+      } else if (msg.type === 'state') {
+        session.remoteDirty = !!msg.dirty;
+        refreshBar();
       }
     });
   }
@@ -179,8 +183,18 @@
   function setBusy(busy) {
     const el = document.querySelector('.vcpe-bar');
     if (!el) return;
-    el.querySelector('.vcpe-save').disabled = busy;
+    el.querySelector('.vcpe-save').disabled = busy || !!session?.remoteDirty;
     el.querySelector('.vcpe-cancel').disabled = busy;
+  }
+
+  function refreshBar() {
+    const el = document.querySelector('.vcpe-bar');
+    if (!el || !session) return;
+    el.querySelector('.vcpe-save').disabled = !!session.remoteDirty;
+    if (session.remoteDirty) {
+      el.querySelector('.vcpe-status').textContent =
+        'VSCode 里有未保存修改，先保存文件（Ctrl+S）';
+    }
   }
 
   // ---------- 编辑会话 ----------
@@ -228,7 +242,8 @@
       start: new Date().toISOString(),
       patch: null,
       fullOriginal: null,
-      dirty: false,
+      changed: false,
+      remoteDirty: false,
     };
     injectStyle();
     const b = bar();
@@ -373,6 +388,10 @@
 
   async function submit() {
     if (!session) return;
+    if (session.remoteDirty) {
+      notify('VSCode 里有未保存修改，先保存文件（Ctrl+S）再提交。');
+      return;
+    }
     const b = bar();
     const summary = b.querySelector('.vcpe-summary').value.trim();
     const minor = b.querySelector('.vcpe-minor').checked;
@@ -417,7 +436,22 @@
 
   function cancel() {
     if (!session) return;
-    send({ type: 'finish', sessionId: session.id, result: 'cancelled' });
+    const pending = session.remoteDirty || session.changed;
+    if (
+      pending &&
+      !confirm(
+        session.remoteDirty
+          ? 'VSCode 里还有未保存的修改，放弃并关闭编辑器？'
+          : '还有未提交到站点的修改，确定放弃？'
+      )
+    ) {
+      return;
+    }
+    send({
+      type: 'finish',
+      sessionId: session.id,
+      result: pending ? 'discarded' : 'unchanged',
+    });
     if (session.patch) revertPatch();
     if (session.fullOriginal) {
       const root = document.querySelector('#mw-content-text');
@@ -476,11 +510,24 @@
       true
     );
 
-    // 关闭/刷新标签时通知扩展关闭对应编辑器
-    window.addEventListener('pagehide', () => {
-      if (session) {
-        send({ type: 'finish', sessionId: session.id, result: 'closed' });
+    // 有未保存/未提交内容时，阻止直接关闭标签
+    window.addEventListener('beforeunload', (e) => {
+      if (!session) return;
+      if (session.remoteDirty || session.changed) {
+        e.preventDefault();
+        e.returnValue = '';
       }
+    });
+
+    // 关闭/刷新标签：无改动才算确认，有改动只通知断开（文件保留）
+    window.addEventListener('pagehide', () => {
+      if (!session) return;
+      const clean = !session.changed && !session.remoteDirty;
+      send({
+        type: 'finish',
+        sessionId: session.id,
+        result: clean ? 'unchanged' : 'closed',
+      });
     });
 
     // 由链接跳转打开的新标签，自动进入编辑预览
