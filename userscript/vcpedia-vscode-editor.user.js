@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         VCPedia ⇄ VSCode 外部编辑器
 // @namespace    vcpedia-vscode-editor
-// @version      0.2.2
+// @version      0.2.3
 // @description  在 vcpedia.cn 上发起编辑，用 VSCode 改，保存即预览，浏览器内提交
 // @match        https://vcpedia.cn/*
 // @grant        none
@@ -12,7 +12,7 @@
 (() => {
   'use strict';
 
-  console.info('[vcpedia-vscode] userscript 0.2.2 loaded');
+  console.info('[vcpedia-vscode] userscript 0.2.3 loaded');
 
   const WS_URL = 'ws://127.0.0.1:8927';
   const RECONNECT_MS = 1000;
@@ -374,8 +374,21 @@
       for (const n of oldNodes) parent.insertBefore(n, next);
       throw e;
     }
+    for (const n of inserted) executeScripts(n);
     session.patch = { parent, next, oldNodes, inserted };
     return true;
+  }
+
+  function executeScripts(root) {
+    if (!root) return;
+    root.querySelectorAll?.('script').forEach((old) => {
+      if (old.dataset.vcpeExecuted) return;
+      const script = document.createElement('script');
+      for (const attr of old.attributes) script.setAttribute(attr.name, attr.value);
+      script.textContent = old.textContent;
+      script.dataset.vcpeExecuted = '1';
+      old.replaceWith(script);
+    });
   }
 
   function applyFull(html) {
@@ -384,6 +397,7 @@
     const temp = document.createElement('div');
     temp.innerHTML = html;
     root.replaceChildren(...temp.childNodes);
+    executeScripts(root);
     if (window.mw?.hook && typeof jQuery === 'function') mw.hook('wikipage.content').fire(jQuery(root));
   }
 
