@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         VCPedia ⇄ VSCode 外部编辑器
 // @namespace    vcpedia-vscode-editor
-// @version      0.3.1
+// @version      0.3.2
 // @description  在 vcpedia.cn 上发起编辑，用 VSCode 改，保存即预览，浏览器内提交
 // @match        https://vcpedia.cn/*
 // @grant        none
@@ -12,7 +12,7 @@
 (() => {
   'use strict';
 
-  console.info('[vcpedia-vscode] userscript 0.3.1 loaded');
+  console.info('[vcpedia-vscode] userscript 0.3.2 loaded');
 
   const WS_URL = 'ws://127.0.0.1:8927';
   const RECONNECT_MS = 1000;
@@ -83,7 +83,14 @@
         session.remoteDirty = !!msg.dirty;
         refreshBar();
       } else if (msg.type === 'scroll') {
-        scrollToOccurrence(msg.text, msg.occurrence, msg.scope);
+        scrollToOccurrence(
+          msg.text,
+          msg.occurrence,
+          msg.scope,
+          msg.label,
+          msg.prev,
+          msg.next
+        );
       }
     });
   }
@@ -568,13 +575,13 @@
     return false;
   }
 
-  function findTextRange(root, text, occurrence) {
+  function buildTextContext(root) {
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     const nodes = [];
     let raw = '';
     let node;
     while ((node = walker.nextNode())) {
-      if (node.parentElement?.closest('script,style')) continue;
+      if (node.parentElement?.closest('script,style,.vc-preview')) continue;
       const start = raw.length;
       raw += node.nodeValue;
       nodes.push({ node, start, end: raw.length });
@@ -597,19 +604,23 @@
         space = false;
       }
     }
-    const needle = String(text || '')
+    return { nodes, norm, map };
+  }
+
+  function findRangeIn(ctx, needle, occurrence) {
+    const text = String(needle || '')
       .replace(/\s+/g, ' ')
       .trim();
-    if (!needle) return null;
+    if (!text) return null;
     let index = -1;
     let seen = 0;
-    while ((index = norm.indexOf(needle, index + 1)) >= 0) {
+    while ((index = ctx.norm.indexOf(text, index + 1)) >= 0) {
       seen++;
       if (seen < occurrence) continue;
-      const rawStart = map[index];
-      const rawEnd = (map[Math.min(index + needle.length - 1, map.length - 1)] || rawStart) + 1;
-      const head = nodes.find((n) => rawStart >= n.start && rawStart < n.end);
-      const tail = nodes.find((n) => rawEnd <= n.end && rawEnd > n.start);
+      const rawStart = ctx.map[index];
+      const rawEnd = (ctx.map[Math.min(index + text.length - 1, ctx.map.length - 1)] || rawStart) + 1;
+      const head = ctx.nodes.find((n) => rawStart >= n.start && rawStart < n.end);
+      const tail = ctx.nodes.find((n) => rawEnd <= n.end && rawEnd > n.start);
       if (!head || !tail) continue;
       const range = document.createRange();
       range.setStart(head.node, rawStart - head.start);
@@ -619,7 +630,7 @@
     return null;
   }
 
-  function scrollToOccurrence(text, occurrence, scope) {
+  function scrollToOccurrence(text, occurrence, scope, label, prev, next) {
     if (!text) return false;
     const all = document.querySelector('#mw-content-text');
     if (!all) return false;
@@ -629,17 +640,51 @@
       if (!root) return false;
     }
     const wanted = Math.max(1, Number(occurrence) || 1);
-    const range = findTextRange(root, text, wanted);
-    if (!range) return false;
-    const rect = range.getBoundingClientRect();
-    if (rect && (rect.width || rect.height)) return drawBox(rect);
-    const el = range.startContainer?.parentElement;
-    if (el && revealHidden(el)) {
-      setTimeout(() => {
-        const again = findTextRange(root, text, wanted);
-        if (again) drawBox(again.getBoundingClientRect());
-      }, 150);
-      return true;
+    const candidates = [];
+    const push = (value, occ) => {
+      const needle = String(value || '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (needle.length < 2) return;
+      if (candidates.some((c) => c.needle === needle)) return;
+      candidates.push({ needle, occurrence: occ });
+    };
+    if (scope) {
+      // The container-scoped occurrence is already exact.
+      push(text, wanted);
+    } else {
+      if (label) {
+        push(label + ' ' + text, 1);
+        push(label + text, 1);
+      }
+      if (next) {
+        push(text + ' ' + next, 1);
+        push(text + next, 1);
+      }
+      if (prev) {
+        push(prev + ' ' + text, 1);
+        push(prev + text, 1);
+      }
+      push(text, wanted);
+    }
+    const ctx = buildTextContext(root);
+    for (const candidate of candidates) {
+      const range = findRangeIn(ctx, candidate.needle, candidate.occurrence);
+      if (!range) continue;
+      const rect = range.getBoundingClientRect();
+      if (rect && (rect.width || rect.height)) {
+        if (drawBox(rect)) return true;
+        continue;
+      }
+      const el = range.startContainer?.parentElement;
+      if (el && revealHidden(el)) {
+        const retry = () => {
+          const again = findRangeIn(ctx, candidate.needle, candidate.occurrence);
+          if (again) drawBox(again.getBoundingClientRect());
+        };
+        setTimeout(retry, 150);
+        return true;
+      }
     }
     return false;
   }

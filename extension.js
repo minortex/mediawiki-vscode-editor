@@ -123,7 +123,7 @@ function extractItems(text) {
   const root = wikiParser.parse(text);
   const items = [];
   let poemCount = 0;
-  const add = (value, start, scope) => {
+  const add = (value, start, scope, label) => {
     const s = simplify(
       String(value || '')
         .replace(/<!--|-->/g, '')
@@ -132,29 +132,34 @@ function extractItems(text) {
     );
     if (/\.(jpe?g|png|gif|svg|webp|ogg|mp3|webm|pdf)$/i.test(s)) return;
     if (!/[\p{L}\p{N}]/u.test(s)) return;
-    if (s.length >= 2 && s.length <= 60) items.push({ start, text: s, scope });
+    if (s.length >= 2 && s.length <= 60) {
+      items.push({ start, text: s, scope, label: label || null });
+    }
   };
-  const walk = (node, scope) => {
+  const walk = (node, scope, label) => {
     const name = node.constructor.name;
     // <poem> renders inside .poem; restrict matching to that container so
     // repeated lyrics are not matched against the same words in infoboxes.
     if (name === 'ExtToken' && String(node.name).toLowerCase() === 'poem') {
       scope = { type: 'poem', index: poemCount++ };
+      label = null;
     }
-    // Only the value part of a parameter is rendered; skip the parameter name.
+    // Only the value part of a parameter is rendered; skip the parameter name
+    // but keep it as a label for context matching.
     if (name === 'ParameterToken') {
-      for (const child of (node.childNodes || []).slice(1)) walk(child, scope);
+      const paramName = simplify(String(node.childNodes?.[0] || '').replace(/\s+/g, ' ').trim());
+      for (const child of (node.childNodes || []).slice(1)) walk(child, scope, paramName);
       return;
     }
     // The template name is not rendered text either; skip it and visit parameters.
     if (name === 'TranscludeToken') {
-      for (const child of (node.childNodes || []).slice(1)) walk(child, scope);
+      for (const child of (node.childNodes || []).slice(1)) walk(child, scope, label);
       return;
     }
     if (name === 'LinkToken') {
       const raw = node.toString();
       const m = /^\[\[([^\]|]+)(?:\|([^\]]+))?\]\]$/.exec(raw);
-      add(m ? (m[2] || m[1]) : raw, node.getAbsoluteIndex(), scope);
+      add(m ? (m[2] || m[1]) : raw, node.getAbsoluteIndex(), scope, label);
       return;
     }
     if (name === 'AstText') {
@@ -163,15 +168,19 @@ function extractItems(text) {
       let cursor = 0;
       for (const part of raw.split(/[•·、,，;；\n]+/)) {
         const idx = raw.indexOf(part, cursor);
-        add(part, base + Math.max(0, idx), scope);
+        add(part, base + Math.max(0, idx), scope, label);
         cursor = Math.max(cursor, idx + part.length);
       }
       return;
     }
-    for (const child of node.childNodes || []) walk(child, scope);
+    for (const child of node.childNodes || []) walk(child, scope, label);
   };
   for (const child of root.childNodes || []) walk(child);
   items.sort((a, b) => a.start - b.start);
+  for (let i = 0; i < items.length; i++) {
+    items[i].prev = i > 0 ? items[i - 1].text.slice(-24) : null;
+    items[i].next = i < items.length - 1 ? items[i + 1].text.slice(0, 24) : null;
+  }
   return items;
 }
 
@@ -393,6 +402,9 @@ function activate(context) {
             text: item.text,
             occurrence: occurrenceOf(items, itemIndex),
             scope: item.scope,
+            label: item.label,
+            prev: item.prev,
+            next: item.next,
           });
         }, 200)
       );
