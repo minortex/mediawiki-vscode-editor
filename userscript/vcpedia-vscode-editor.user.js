@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         VCPedia ⇄ VSCode 外部编辑器
 // @namespace    vcpedia-vscode-editor
-// @version      0.2.4
+// @version      0.2.5
 // @description  在 vcpedia.cn 上发起编辑，用 VSCode 改，保存即预览，浏览器内提交
 // @match        https://vcpedia.cn/*
 // @grant        none
@@ -12,7 +12,7 @@
 (() => {
   'use strict';
 
-  console.info('[vcpedia-vscode] userscript 0.2.4 loaded');
+  console.info('[vcpedia-vscode] userscript 0.2.5 loaded');
 
   const WS_URL = 'ws://127.0.0.1:8927';
   const RECONNECT_MS = 1000;
@@ -83,6 +83,7 @@
         session.remoteDirty = !!msg.dirty;
         refreshBar();
       } else if (msg.type === 'scroll') {
+        if (scrollToOccurrence(msg.text, msg.occurrence)) return;
         if (scrollToText(msg.texts)) return;
         const el = msg.template
           ? templateMap.get(normTemplate(msg.template))
@@ -602,6 +603,28 @@
       }
     }
     return null;
+  }
+
+  function scrollToOccurrence(text, occurrence) {
+    if (!text) return false;
+    const root = document.querySelector('#mw-content-text');
+    if (!root) return false;
+    const wanted = Math.max(1, Number(occurrence) || 1);
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let seen = 0;
+    let node;
+    while ((node = walker.nextNode())) {
+      if (node.parentElement?.closest('script,style')) continue;
+      if (!node.nodeValue || !node.nodeValue.includes(text)) continue;
+      seen++;
+      if (seen < wanted) continue;
+      const el = node.parentElement;
+      el.scrollIntoView({ block: 'center' });
+      el.classList.add('vcpe-hit');
+      setTimeout(() => el.classList.remove('vcpe-hit'), 1600);
+      return true;
+    }
+    return false;
   }
 
   function scrollToText(texts) {

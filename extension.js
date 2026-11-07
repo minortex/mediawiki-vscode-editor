@@ -101,6 +101,78 @@ async function closeAndDelete(fsPath) {
   } catch {}
 }
 
+let wikiParser = null;
+const itemCache = new Map(); // fsPath -> { version, items }
+
+function extractItems(text) {
+  if (text.length > 300000) return [];
+  wikiParser ||= require('wikiparser-node');
+  const root = wikiParser.parse(text);
+  const items = [];
+  const add = (value, start) => {
+    const s = String(value || '')
+      .replace(/<!--|-->/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (s.length >= 2 && s.length <= 60) items.push({ start, text: s });
+  };
+  const walk = (node) => {
+    const name = node.constructor.name;
+    if (name === 'LinkToken') {
+      const raw = node.toString();
+      const m = /^\[\[([^\]|]+)(?:\|([^\]]+))?\]\]$/.exec(raw);
+      add(m ? (m[2] || m[1]) : raw, node.getAbsoluteIndex());
+      return;
+    }
+    if (name === 'AstText') {
+      const raw = node.toString();
+      const base = node.getAbsoluteIndex();
+      let cursor = 0;
+      for (const part of raw.split(/[•·、,，;；\n]+/)) {
+        const idx = raw.indexOf(part, cursor);
+        add(part, base + Math.max(0, idx));
+        cursor = Math.max(cursor, idx + part.length);
+      }
+      return;
+    }
+    for (const child of node.childNodes || []) walk(child);
+  };
+  for (const child of root.childNodes || []) walk(child);
+  items.sort((a, b) => a.start - b.start);
+  return items;
+}
+
+function itemsFor(doc) {
+  const cached = itemCache.get(doc.uri.fsPath);
+  if (cached && cached.version === doc.version) return cached.items;
+  let items = [];
+  try {
+    items = extractItems(doc.getText());
+  } catch {
+    items = [];
+  }
+  itemCache.set(doc.uri.fsPath, { version: doc.version, items });
+  return items;
+}
+
+function itemAt(items, offset) {
+  let best = -1;
+  for (let i = 0; i < items.length; i++) {
+    if (items[i].start <= offset) best = i;
+    else break;
+  }
+  return best;
+}
+
+function occurrenceOf(items, index) {
+  const text = items[index].text;
+  let count = 0;
+  for (let i = 0; i <= index; i++) {
+    if (items[i].text === text) count++;
+  }
+  return count;
+}
+
 function locateCandidates(text) {
   const out = [];
   const push = (value) => {
@@ -371,6 +443,10 @@ function activate(context) {
           syncTimers.delete(sessionId);
           const doc = event.textEditor.document;
           const texts = locateCandidates(doc.lineAt(line).text);
+          const items = itemsFor(doc);
+          const offset = doc.offsetAt(event.selections[0]?.active || new vscode.Position(line, 0));
+          const itemIndex = itemAt(items, offset);
+          const item = itemIndex >= 0 ? items[itemIndex] : null;
           const template = templateAtLine(doc, line);
           if (template) {
             const { heading } = positionForLine(doc, line);
@@ -382,11 +458,21 @@ function activate(context) {
               ratio: 0,
               center: true,
               texts,
+              text: item?.text,
+              occurrence: item ? occurrenceOf(items, itemIndex) : undefined,
             });
             return;
           }
           const { heading, ratio } = positionForLine(doc, line);
-          broadcast(wss, { type: 'scroll', sessionId, heading, ratio, texts });
+          broadcast(wss, {
+            type: 'scroll',
+            sessionId,
+            heading,
+            ratio,
+            texts,
+            text: item?.text,
+            occurrence: item ? occurrenceOf(items, itemIndex) : undefined,
+          });
         }, 200)
       );
     }),

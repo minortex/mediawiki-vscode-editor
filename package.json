@@ -49,6 +49,7 @@
     }
   },
   "dependencies": {
+    "wikiparser-node": "^2.1.0",
     "ws": "^8.22.1"
   }
 }

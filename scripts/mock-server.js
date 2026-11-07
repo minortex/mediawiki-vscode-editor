@@ -37,6 +37,8 @@ const wss = startWsServer({
               ratio: 0,
               center: true,
               texts: ['我真的受伤了'],
+              text: '我真的受伤了',
+              occurrence: 1,
             })
           );
           console.log('[mock] sent scroll template');

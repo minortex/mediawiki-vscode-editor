@@ -29,7 +29,7 @@ VSCode --保存--> 浏览器（action=parse 渲染预览）
 
 2. 浏览器端二选一：
 
-   - Tampermonkey：新建脚本，粘贴 `userscript/vcpedia-vscode-editor.user.js` 的内容。更新时打开同一条目，全选删除后粘贴新文件再保存。装好后控制台应出现 `[vcpedia-vscode] userscript 0.2.4 loaded`。
+   - Tampermonkey：新建脚本，粘贴 `userscript/vcpedia-vscode-editor.user.js` 的内容。更新时打开同一条目，全选删除后粘贴新文件再保存。装好后控制台应出现 `[vcpedia-vscode] userscript 0.2.5 loaded`。
    - 或直接放进个人 JS：打开 `https://vcpedia.cn/User:<你的用户名>/common.js`（红链就创建），粘贴同一份内容并保存，然后 `?action=purge` 或 Ctrl+F5 刷新。个人 JS 只在你登录时加载，效果与 Tampermonkey 相同。
 
    不要放进 `MediaWiki:Common.js`：那需要 `editinterface` 权限，且会让所有访客都去连本机端口。
@@ -73,7 +73,9 @@ localStorage.setItem('vcpe-editor-scheme', 'vscode')
 - 点击预览正文里的任意位置（非链接），VSCode 会把光标定位到对应源码行，并在状态栏提示行号。
 - VSCode 里移动光标，预览会滚动到对应位置。
 - 粒度是“章节 + 章节内相对位置”：先找最近的 `== 标题 ==`，再按该章节内的纵向比例换算成源码行。模板展开导致的块数量差异不会破坏同步，但精度不是字符级。
-- 光标所在行含可见文本（链接显示名、列表项、参数值）时，优先在预览里查找该文本，滚动到并短暂高亮匹配元素。长模板（如 navbox）里的 `|list1 = [[...|幸福刑]]` 会直接定位到导航框中的对应项。
+- 优先用 `wikiparser-node` 解析出的 AST 文本项定位：取光标所在的最小文本节点，记录该文本在文档中的出现序号，在预览里找第 N 次出现并高亮。这样同名文本（歌名在第 2 次出现）不会跳到第一个匹配。
+- AST 不可用或没命中时，回退到按行提取的候选文本（链接显示名、列表项、参数值），再回退模板区域和章节比例。
+- 超大文件（>300KB）跳过 AST，直接走候选文本。
 - 找不到文本时，若光标在 `{{模板|...}}` 内部，则把该模板所在区域（章节起点或页面顶部）居中显示，避免信息框这类模板造成大幅偏移。
 - 预览仍使用站点默认（legacy）解析器。Parsoid 输出虽然带模板标记，但会破坏 Widget 等扩展的输出，因此不用于预览。
 - 链接点击仍然优先执行“打开新标签编辑目标页”，不会触发定位。
