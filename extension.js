@@ -129,10 +129,21 @@ function extractItems(text) {
         .replace(/\s+/g, ' ')
         .trim()
     );
+    if (/\\.(jpe?g|png|gif|svg|webp|ogg|mp3|webm|pdf)$/i.test(s)) return;
     if (s.length >= 2 && s.length <= 60) items.push({ start, text: s });
   };
   const walk = (node) => {
     const name = node.constructor.name;
+    // Only the value part of a parameter is rendered; skip the parameter name.
+    if (name === 'ParameterToken') {
+      for (const child of (node.childNodes || []).slice(1)) walk(child);
+      return;
+    }
+    // The template name is not rendered text either; skip it and visit parameters.
+    if (name === 'TranscludeToken') {
+      for (const child of (node.childNodes || []).slice(1)) walk(child);
+      return;
+    }
     if (name === 'LinkToken') {
       const raw = node.toString();
       const m = /^\[\[([^\]|]+)(?:\|([^\]]+))?\]\]$/.exec(raw);
@@ -188,110 +199,16 @@ function occurrenceOf(items, index) {
   return count;
 }
 
-function locateCandidates(text) {
-  const out = [];
-  const push = (value) => {
-    const s = simplify(String(value || '').trim());
-    if (s.length >= 2 && s.length <= 60 && !out.includes(s)) out.push(s);
-  };
-
-  const linkRe = /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g;
-  let m;
-  while ((m = linkRe.exec(text))) push(m[2] || m[1]);
-
-  const cleaned = text
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/<!--|-->/g, '')
-    .replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, target, label) => label || target)
-    .replace(/'''?/g, '')
-    .replace(/\{\{|\}\}/g, '')
-    .replace(/[|•·、,，;；]/g, '\n');
-
-  for (const part of cleaned.split('\n')) {
-    const s = part.replace(/^[#*:;\s]+/, '').trim();
-    if (!s || s.length < 2) continue;
-    if (/^[a-zA-Z-]+\s*=/.test(s)) continue;
-    if (/^(background|color|style|width|height|font|border|margin|padding)/i.test(s)) continue;
-    push(s.slice(0, 60));
-  }
-  return out.slice(0, 4);
-}
-
-function normTemplate(name) {
-  return String(name || '')
-    .trim()
-    .replace(/^Template:/i, '')
-    .replace(/_/g, ' ')
-    .replace(/\s+/g, ' ')
-    .toLowerCase();
-}
-
-function templateAtLine(doc, line) {
-  const start = Math.max(0, line - 200);
-  let text = '';
-  for (let i = start; i <= line; i++) text += doc.lineAt(i).text + '\n';
-
-  let depth = 0;
-  let open = -1;
-  for (let i = 0; i < text.length - 1; i++) {
-    if (text[i] === '{' && text[i + 1] === '{') {
-      if (depth === 0) open = i;
-      depth++;
-      i++;
-    } else if (text[i] === '}' && text[i + 1] === '}') {
-      depth = Math.max(0, depth - 1);
-      i++;
-      if (depth === 0) open = -1;
-    }
-  }
-  if (open < 0) return null;
-  const m = /^\s*([^\n|}]+)/.exec(text.slice(open + 2));
-  return m ? normTemplate(m[1]) : null;
-}
-
-function findTemplateLine(doc, name) {
-  const target = normTemplate(name);
+function findLineByText(doc, text) {
+  const needle = simplify(String(text || '').trim());
+  if (!needle) return -1;
+  const items = itemsFor(doc);
+  const hit = items.find((it) => it.text.includes(needle) || needle.includes(it.text));
+  if (hit) return doc.positionAt(hit.start).line;
   for (let i = 0; i < doc.lineCount; i++) {
-    const text = doc.lineAt(i).text;
-    const re = /\{\{\s*([^\n|}]+)/g;
-    let m;
-    while ((m = re.exec(text))) {
-      if (normTemplate(m[1]) === target) return i;
-    }
+    if (simplify(doc.lineAt(i).text).includes(needle)) return i;
   }
   return -1;
-}
-
-function headingLines(doc) {
-  const heads = [];
-  for (let i = 0; i < doc.lineCount; i++) {
-    const m = /^(={1,6})\s*(.+?)\s*\1\s*$/.exec(doc.lineAt(i).text);
-    if (m) heads.push({ line: i, level: m[1].length, title: m[2] });
-  }
-  return heads;
-}
-
-function positionForLine(doc, line) {
-  const heads = headingLines(doc);
-  let index = -1;
-  for (let i = 0; i < heads.length; i++) {
-    if (heads[i].line <= line) index = i;
-  }
-  const start = index >= 0 ? heads[index].line : 0;
-  const end = index + 1 < heads.length ? heads[index + 1].line : doc.lineCount;
-  const ratio = end > start ? (line - start) / (end - start) : 0;
-  return { heading: index, ratio: Math.max(0, Math.min(1, ratio)) };
-}
-
-function lineForPosition(doc, heading, ratio) {
-  const heads = headingLines(doc);
-  const index = Math.max(-1, Math.min(heading, heads.length - 1));
-  if (index === -1) {
-    return Math.max(0, Math.min(doc.lineCount - 1, Math.round((ratio || 0) * doc.lineCount)));
-  }
-  const start = heads[index].line;
-  const end = index + 1 < heads.length ? heads[index + 1].line : doc.lineCount;
-  return Math.min(end - 1, start + Math.round((ratio || 0) * Math.max(0, end - start)));
 }
 
 let suppressScrollUntil = 0;
@@ -305,19 +222,15 @@ function revealLine(editor, line) {
 }
 
 async function locateInEditor(msg) {
+  if (!msg.text) return;
   const meta = sessions.get(msg.sessionId);
   if (!meta) return;
   const doc = vscode.workspace.textDocuments.find((d) => d.uri.fsPath === meta.fsPath);
   if (!doc) return;
+  const line = findLineByText(doc, msg.text);
+  if (line < 0) return;
   const editor = await vscode.window.showTextDocument(doc, { preview: false });
-  if (msg.template) {
-    const line = findTemplateLine(doc, msg.template);
-    if (line >= 0) {
-      revealLine(editor, line);
-      return;
-    }
-  }
-  revealLine(editor, lineForPosition(doc, msg.heading, msg.ratio));
+  revealLine(editor, line);
 }
 
 async function openSession(msg, ws) {
@@ -457,36 +370,18 @@ function activate(context) {
         setTimeout(() => {
           syncTimers.delete(sessionId);
           const doc = event.textEditor.document;
-          const texts = locateCandidates(doc.lineAt(line).text);
           const items = itemsFor(doc);
-          const offset = doc.offsetAt(event.selections[0]?.active || new vscode.Position(line, 0));
+          const offset = doc.offsetAt(
+            event.selections[0]?.active || new vscode.Position(line, 0)
+          );
           const itemIndex = itemAt(items, offset);
-          const item = itemIndex >= 0 ? items[itemIndex] : null;
-          const template = templateAtLine(doc, line);
-          if (template) {
-            const { heading } = positionForLine(doc, line);
-            broadcast(wss, {
-              type: 'scroll',
-              sessionId,
-              template,
-              heading,
-              ratio: 0,
-              center: true,
-              texts,
-              text: item?.text,
-              occurrence: item ? occurrenceOf(items, itemIndex) : undefined,
-            });
-            return;
-          }
-          const { heading, ratio } = positionForLine(doc, line);
+          if (itemIndex < 0) return; // no candidate: keep the last preview position
+          const item = items[itemIndex];
           broadcast(wss, {
             type: 'scroll',
             sessionId,
-            heading,
-            ratio,
-            texts,
-            text: item?.text,
-            occurrence: item ? occurrenceOf(items, itemIndex) : undefined,
+            text: item.text,
+            occurrence: occurrenceOf(items, itemIndex),
           });
         }, 200)
       );

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         VCPedia ⇄ VSCode 外部编辑器
 // @namespace    vcpedia-vscode-editor
-// @version      0.2.6
+// @version      0.3.0
 // @description  在 vcpedia.cn 上发起编辑，用 VSCode 改，保存即预览，浏览器内提交
 // @match        https://vcpedia.cn/*
 // @grant        none
@@ -12,7 +12,7 @@
 (() => {
   'use strict';
 
-  console.info('[vcpedia-vscode] userscript 0.2.6 loaded');
+  console.info('[vcpedia-vscode] userscript 0.3.0 loaded');
 
   const WS_URL = 'ws://127.0.0.1:8927';
   const RECONNECT_MS = 1000;
@@ -83,13 +83,7 @@
         session.remoteDirty = !!msg.dirty;
         refreshBar();
       } else if (msg.type === 'scroll') {
-        if (scrollToOccurrence(msg.text, msg.occurrence)) return;
-        if (scrollToText(msg.texts)) return;
-        const el = msg.template
-          ? templateMap.get(normTemplate(msg.template))
-          : null;
-        if (el) el.scrollIntoView({ block: 'center' });
-        else scrollToPosition(msg.heading, msg.ratio, msg.center);
+        scrollToOccurrence(msg.text, msg.occurrence);
       }
     });
   }
@@ -132,7 +126,6 @@
     .vcpe-bar button:disabled{opacity:.5;cursor:not-allowed}
     .vcpe-bar label{display:flex;align-items:center;gap:4px;white-space:nowrap}
     body.vcpe-editing{padding-bottom:80px}
-    .vcpe-hit{outline:2px solid #3366cc;background:rgba(51,102,204,.08)}
   `;
 
   function injectStyle() {
@@ -440,7 +433,6 @@
         '无法在页面中定位该章节，未应用预览（页面保持原样）';
       return;
     }
-    buildTemplateMap();
     const st = bar().querySelector('.vcpe-status');
     st.textContent = `预览已更新 ${new Date().toLocaleTimeString()}`;
     addSectionButtons();
@@ -540,77 +532,7 @@
     return true;
   }
 
-  function normTemplate(name) {
-    return String(name || '')
-      .trim()
-      .replace(/^Template:/i, '')
-      .replace(/_/g, ' ')
-      .replace(/\s+/g, ' ')
-      .toLowerCase();
-  }
-
-  let templateMap = new Map();
-
-  function templateNameOf(el) {
-    try {
-      const mw = JSON.parse(el.getAttribute('data-mw') || '{}');
-      const parts = Array.isArray(mw.parts) ? mw.parts : [];
-      for (const part of parts) {
-        const target = part?.template?.target;
-        if (!target) continue;
-        let raw = target.href ? target.href.replace(/^\.\/Template:/i, '') : target.wt;
-        try {
-          raw = decodeURIComponent(raw);
-        } catch {}
-        const name = normTemplate(raw);
-        if (name) return name;
-      }
-    } catch {}
-    return null;
-  }
-
-  function containerFor(el, root) {
-    const section = el.closest('section');
-    if (section && section.getBoundingClientRect().height > 40) return section;
-    let node = el.parentElement;
-    while (node && node !== root) {
-      if (node.getBoundingClientRect().height > 40) return node;
-      node = node.parentElement;
-    }
-    return el;
-  }
-
-  function buildTemplateMap() {
-    templateMap = new Map();
-    const root = document.querySelector('#mw-content-text');
-    if (!root) return;
-    root.querySelectorAll('[data-mw]').forEach((el) => {
-      const name = templateNameOf(el);
-      if (!name || templateMap.has(name)) return;
-      const container = containerFor(el, root);
-      templateMap.set(name, container);
-      container.setAttribute('data-vcpe-template', name);
-    });
-  }
-
-  function findTextElement(root, text) {
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    let node;
-    while ((node = walker.nextNode())) {
-      if (node.parentElement?.closest('script,style')) continue;
-      if (node.nodeValue && node.nodeValue.includes(text)) {
-        return node.parentElement;
-      }
-    }
-    return null;
-  }
-
-  function highlightText(node, start, length) {
-    const end = Math.min(node.nodeValue.length, start + length);
-    const range = document.createRange();
-    range.setStart(node, start);
-    range.setEnd(node, end);
-    const rect = range.getBoundingClientRect();
+  function drawBox(rect) {
     if (!rect || (!rect.width && !rect.height)) return false;
     const top = rect.top + window.scrollY;
     const left = rect.left + window.scrollX;
@@ -628,89 +550,93 @@
     return true;
   }
 
+  function revealHidden(el) {
+    let node = el;
+    while (node && node !== document.body) {
+      const style = window.getComputedStyle(node);
+      if (style.display === 'none') {
+        const toggle = node.querySelector('.mw-collapsible-toggle a');
+        if (toggle) {
+          toggle.click();
+          return true;
+        }
+        node.style.display = '';
+        return true;
+      }
+      node = node.parentElement;
+    }
+    return false;
+  }
+
+  function findTextRange(root, text, occurrence) {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    let offset = 0;
+    let node;
+    while ((node = walker.nextNode())) {
+      if (node.parentElement?.closest('script,style')) continue;
+      const len = node.nodeValue.length;
+      nodes.push({ node, start: offset, end: offset + len });
+      offset += len;
+    }
+    const all = nodes.map((n) => n.node.nodeValue).join('');
+    let index = -1;
+    let seen = 0;
+    while ((index = all.indexOf(text, index + 1)) >= 0) {
+      seen++;
+      if (seen < occurrence) continue;
+      const head = nodes.find((n) => index >= n.start && index < n.end);
+      const tail = nodes.find((n) => index + text.length <= n.end);
+      if (!head || !tail) continue;
+      const range = document.createRange();
+      range.setStart(head.node, index - head.start);
+      range.setEnd(tail.node, index + text.length - tail.start);
+      return range;
+    }
+    return null;
+  }
+
   function scrollToOccurrence(text, occurrence) {
     if (!text) return false;
     const root = document.querySelector('#mw-content-text');
     if (!root) return false;
     const wanted = Math.max(1, Number(occurrence) || 1);
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    let seen = 0;
-    let node;
-    while ((node = walker.nextNode())) {
-      if (node.parentElement?.closest('script,style')) continue;
-      const value = node.nodeValue;
-      if (!value) continue;
-      let pos = -1;
-      while ((pos = value.indexOf(text, pos + 1)) >= 0) {
-        seen++;
-        if (seen >= wanted) return highlightText(node, pos, text.length);
-      }
-    }
-    return false;
-  }
-
-  function scrollToText(texts) {
-    if (!Array.isArray(texts) || !texts.length) return false;
-    const root = document.querySelector('#mw-content-text');
-    if (!root) return false;
-    for (const text of texts) {
-      const el = findTextElement(root, text);
-      if (!el) continue;
-      const node = [...el.childNodes].find(
-        (n) => n.nodeType === Node.TEXT_NODE && n.nodeValue.includes(text)
-      );
-      if (node) return highlightText(node, node.nodeValue.indexOf(text), text.length);
-      el.scrollIntoView({ block: 'center' });
-      el.classList.add('vcpe-hit');
-      setTimeout(() => el.classList.remove('vcpe-hit'), 1600);
+    const range = findTextRange(root, text, wanted);
+    if (!range) return false;
+    const rect = range.getBoundingClientRect();
+    if (rect && (rect.width || rect.height)) return drawBox(rect);
+    const el = range.startContainer?.parentElement;
+    if (el && revealHidden(el)) {
+      setTimeout(() => {
+        const again = findTextRange(root, text, wanted);
+        if (again) drawBox(again.getBoundingClientRect());
+      }, 150);
       return true;
     }
     return false;
   }
 
-  function previewHeadings() {
-    const root = document.querySelector('#mw-content-text');
-    if (!root) return [];
-    return [...root.querySelectorAll('h1,h2,h3,h4,h5,h6')].filter(
-      (h) => h.id || h.querySelector('.mw-headline, span[id]')
-    );
-  }
-
-  function locateFromPoint(clientY) {
-    const heads = previewHeadings();
-    let index = -1;
-    for (let i = 0; i < heads.length; i++) {
-      if (heads[i].getBoundingClientRect().top <= clientY) index = i;
-      else break;
+  function textAtPoint(x, y) {
+    let range = null;
+    if (document.caretRangeFromPoint) range = document.caretRangeFromPoint(x, y);
+    else if (document.caretPositionFromPoint) {
+      const pos = document.caretPositionFromPoint(x, y);
+      if (pos) {
+        range = document.createRange();
+        range.setStart(pos.offsetNode, pos.offset);
+        range.collapse(true);
+      }
     }
-    const root = document.querySelector('#mw-content-text');
-    const rect = root.getBoundingClientRect();
-    const base = index >= 0 ? heads[index].getBoundingClientRect().top : rect.top;
-    const next =
-      index + 1 < heads.length ? heads[index + 1].getBoundingClientRect().top : rect.bottom;
-    const span = Math.max(1, next - base);
-    const ratio = Math.max(0, Math.min(1, (clientY - base) / span));
-    return { heading: index, ratio };
-  }
-
-  function scrollToPosition(heading, ratio, center) {
-    const heads = previewHeadings();
-    const root = document.querySelector('#mw-content-text');
-    if (!root) return;
-    const rect = root.getBoundingClientRect();
-    const index = Math.min(heading ?? -1, heads.length - 1);
-    const base =
-      index >= 0
-        ? heads[index].getBoundingClientRect().top + window.scrollY
-        : rect.top + window.scrollY;
-    const next =
-      index + 1 < heads.length
-        ? heads[index + 1].getBoundingClientRect().top + window.scrollY
-        : rect.bottom + window.scrollY;
-    const span = Math.max(1, next - base);
-    const target = base + (ratio || 0) * span;
-    const offset = center ? window.innerHeight * 0.25 : 80;
-    window.scrollTo({ top: Math.max(0, target - offset), behavior: 'auto' });
+    if (!range || !range.startContainer || range.startContainer.nodeType !== Node.TEXT_NODE) {
+      return null;
+    }
+    const value = range.startContainer.nodeValue || '';
+    const index = range.startOffset || 0;
+    const s = value
+      .slice(Math.max(0, index - 40), Math.min(value.length, index + 40))
+      .replace(/\s+/g, ' ')
+      .trim();
+    return s.length >= 2 ? s : null;
   }
 
   function boot() {
@@ -742,19 +668,8 @@
           window.open(url.toString(), '_blank', 'noopener');
           return;
         }
-        const tplEl = e.target.closest('[data-vcpe-template]');
-        const mwEl = e.target.closest('[data-mw]');
-        const template = tplEl
-          ? tplEl.getAttribute('data-vcpe-template')
-          : mwEl
-            ? templateNameOf(mwEl)
-            : null;
-        if (template) {
-          send({ type: 'locate', sessionId: session.id, template });
-          return;
-        }
-        const { heading, ratio } = locateFromPoint(e.clientY);
-        send({ type: 'locate', sessionId: session.id, heading, ratio });
+        const text = textAtPoint(e.clientX, e.clientY);
+        if (text) send({ type: 'locate', sessionId: session.id, text });
       },
       true
     );
