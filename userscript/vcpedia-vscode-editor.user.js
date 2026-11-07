@@ -433,18 +433,63 @@
   }
 
   // ---------- 启动 ----------
+  function isArticleLink(a) {
+    if (a.classList.contains('vcpe-sec')) return false;
+    if (a.closest('.mw-editsection')) return false;
+    if (a.classList.contains('new') || a.classList.contains('external')) return false;
+    const url = new URL(a.href, location.href);
+    if (url.origin !== location.origin) return false;
+    const q = url.searchParams;
+    if (q.get('action') || q.get('oldid') || q.get('diff') || q.get('redlink')) return false;
+    if (url.pathname.includes('/Special:') || url.pathname.includes('特殊:')) return false;
+    if (url.pathname === location.pathname && url.hash) return false;
+    return true;
+  }
+
   function boot() {
     if (mw.config.get('wgAction') !== 'view') return;
     injectStyle();
     ensureFab();
     addSectionButtons();
     connect();
+
     document.addEventListener('keydown', (e) => {
       if (e.altKey && !e.ctrlKey && !e.metaKey && e.key.toLowerCase() === 'e') {
         e.preventDefault();
         startEdit(null);
       }
     });
+
+    // 编辑中的预览里点内链：新标签打开目标页并直接进入编辑预览
+    document.addEventListener(
+      'click',
+      (e) => {
+        if (!session) return;
+        const a = e.target.closest('a');
+        if (!a || !a.closest('#mw-content-text')) return;
+        if (!isArticleLink(a)) return;
+        e.preventDefault();
+        const url = new URL(a.href, location.href);
+        url.searchParams.set('vcpe-edit', '1');
+        window.open(url.toString(), '_blank', 'noopener');
+      },
+      true
+    );
+
+    // 关闭/刷新标签时通知扩展关闭对应编辑器
+    window.addEventListener('pagehide', () => {
+      if (session) {
+        send({ type: 'finish', sessionId: session.id, result: 'closed' });
+      }
+    });
+
+    // 由链接跳转打开的新标签，自动进入编辑预览
+    if (new URLSearchParams(location.search).get('vcpe-edit') === '1') {
+      const u = new URL(location.href);
+      u.searchParams.delete('vcpe-edit');
+      history.replaceState(null, '', u.pathname + u.search + u.hash);
+      setTimeout(() => startEdit(null), 100);
+    }
   }
 
   if (document.readyState === 'loading') {

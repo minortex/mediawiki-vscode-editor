@@ -20,7 +20,9 @@ VSCode --保存--> 浏览器（action=parse 渲染预览）
 1. VSCode 扩展：
 
    ```sh
-   code --install-extension dist/vcpedia-vscode-editor-0.1.0.vsix
+   codium --install-extension dist/vcpedia-vscode-editor-0.1.0.vsix
+   # 或 code --install-extension ...
+
    ```
 
    或在扩展目录按 F5 调试。
@@ -42,6 +44,13 @@ VSCode --保存--> 浏览器（action=parse 渲染预览）
 - 浏览器正文即时变成预览，底部浮条可填编辑摘要、标记小编辑。
 - 点「保存更改」提交；「取消」恢复原页面并丢弃本次会话。
 - 提交冲突（别人先改了）时会提示，取消后重新发起编辑。
+
+编辑预览状态下：
+
+- 点正文里的 wiki 内链，会打开新标签并直接进入目标页的编辑预览，同时在 VSCode 打开目标页源码。当前标签的会话保留，可多标签并行。
+- 外链、红链、特殊页面、编辑/历史链接不拦截。
+- 取消或关闭浏览器标签时，扩展会关闭对应的 VSCode 编辑器；若文件有未保存修改，VSCode 会弹出自己的保存提示，只有真正关闭后临时文件才删除。
+- 提交成功后编辑器关闭，临时文件删除。
 
 ## 配置
 

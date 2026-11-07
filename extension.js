@@ -8,7 +8,11 @@ const { startWsServer, broadcast } = require('./lib/ws-server');
 
 let wss = null;
 let statusBar = null;
-const byPath = new Map(); // fsPath -> { sessionId, title, section }
+
+const sessions = new Map(); // sessionId -> { fsPath, ws, title, section }
+const byPath = new Map(); // fsPath -> sessionId
+const pendingDelete = new Set(); // fsPath awaiting a successful close
+const wsSessions = new Map(); // ws -> Set<sessionId>
 
 function config() {
   return vscode.workspace.getConfiguration('vcpediaEditor');
@@ -31,11 +35,11 @@ function updateStatus() {
 }
 
 function push(doc) {
-  const session = byPath.get(doc.uri.fsPath);
-  if (!session || !wss) return false;
+  const sessionId = byPath.get(doc.uri.fsPath);
+  if (!sessionId || !wss) return false;
   const count = broadcast(wss, {
     type: 'update',
-    sessionId: session.sessionId,
+    sessionId,
     text: doc.getText(),
   });
   if (count > 0) {
@@ -44,12 +48,47 @@ function push(doc) {
   return count > 0;
 }
 
-async function openSession(msg) {
+async function removeFile(fsPath) {
+  pendingDelete.delete(fsPath);
+  try {
+    await fs.promises.unlink(fsPath);
+  } catch {}
+}
+
+/**
+ * Close the editor for this session. If the buffer has unsaved changes VSCode
+ * shows its own save prompt; the temporary file is removed only after the
+ * document really closes.
+ */
+async function closeDocAndFile(fsPath) {
+  pendingDelete.add(fsPath);
+  try {
+    const tab = vscode.window.tabGroups?.all
+      ?.flatMap((group) => group.tabs)
+      .find((t) => t.input?.uri?.fsPath === fsPath);
+    if (tab) {
+      const closed = await vscode.window.tabGroups.close(tab);
+      if (closed === false) return; // user kept it open in the save prompt
+      await removeFile(fsPath);
+      return;
+    }
+    const doc = vscode.workspace.textDocuments.find((d) => d.uri.fsPath === fsPath);
+    if (!doc) {
+      await removeFile(fsPath);
+      return;
+    }
+    await vscode.window.showTextDocument(doc, { preview: false });
+    await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+  } catch {
+    // fall back to onDidCloseTextDocument, which still holds pendingDelete
+  }
+}
+
+async function openSession(msg, ws) {
   const dir = config().get('tempDir') || path.join(os.tmpdir(), 'vcpedia-edit');
   await fs.promises.mkdir(dir, { recursive: true });
   const suffix = msg.section != null ? `.s${msg.section}` : '';
   const fsPath = path.join(dir, `${safeName(msg.title)}${suffix}.wiki`);
-  const uri = vscode.Uri.file(fsPath);
 
   let doc = vscode.workspace.textDocuments.find((d) => d.uri.fsPath === fsPath);
   if (doc && doc.isDirty) {
@@ -59,6 +98,11 @@ async function openSession(msg) {
     await vscode.window.showTextDocument(doc, { preview: false });
     return;
   }
+
+  const previous = byPath.get(fsPath);
+  if (previous) {
+    await finishSession({ sessionId: previous, result: 'replaced' });
+  }
   if (doc) {
     await vscode.window.showTextDocument(doc, { preview: false });
     await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
@@ -66,40 +110,47 @@ async function openSession(msg) {
   }
 
   await fs.promises.writeFile(fsPath, msg.text, 'utf8');
-  doc = await vscode.workspace.openTextDocument(uri);
+  doc = await vscode.workspace.openTextDocument(vscode.Uri.file(fsPath));
   await vscode.window.showTextDocument(doc, { preview: false });
 
-  byPath.set(fsPath, {
-    sessionId: msg.sessionId,
+  sessions.set(msg.sessionId, {
+    fsPath,
+    ws,
     title: msg.title,
     section: msg.section,
   });
+  byPath.set(fsPath, msg.sessionId);
+  wsSessions.get(ws)?.add(msg.sessionId);
 
   const label = msg.section != null ? `${msg.title} § ${msg.section}` : msg.title;
   vscode.window.setStatusBarMessage(
     `VCPedia: 正在编辑 ${label}，保存文件即刷新浏览器预览`,
     8000
   );
-  push(doc);
 }
 
-function finishSession(msg) {
-  for (const [fsPath, session] of byPath) {
-    if (session.sessionId === msg.sessionId) byPath.delete(fsPath);
-  }
+async function finishSession(msg) {
+  const meta = sessions.get(msg.sessionId);
+  sessions.delete(msg.sessionId);
+  if (!meta) return;
+  byPath.delete(meta.fsPath);
+  wsSessions.get(meta.ws)?.delete(msg.sessionId);
+  await closeDocAndFile(meta.fsPath);
   vscode.window.setStatusBarMessage(
-    msg.result === 'saved' ? 'VCPedia: 已在浏览器提交保存' : 'VCPedia: 已取消编辑',
-    6000
+    msg.result === 'saved'
+      ? 'VCPedia: 已在浏览器提交保存'
+      : 'VCPedia: 编辑会话已结束',
+    5000
   );
 }
 
 function handleMessage(msg, ws) {
   if (msg.type === 'open') {
-    openSession(msg).catch((err) =>
+    openSession(msg, ws).catch((err) =>
       vscode.window.showErrorMessage(`VCPedia: ${err.message}`)
     );
   } else if (msg.type === 'finish') {
-    finishSession(msg);
+    finishSession(msg).catch(() => {});
   }
 }
 
@@ -116,7 +167,15 @@ function activate(context) {
     allowedOrigin,
     onMessage: handleMessage,
     onConnection: (ws) => {
-      ws.on('close', updateStatus);
+      wsSessions.set(ws, new Set());
+      ws.on('close', () => {
+        const ids = wsSessions.get(ws) || new Set();
+        wsSessions.delete(ws);
+        for (const sessionId of ids) {
+          finishSession({ sessionId, result: 'closed' }).catch(() => {});
+        }
+        updateStatus();
+      });
       updateStatus();
     },
     onError: (err) => {
@@ -146,11 +205,14 @@ function activate(context) {
         : 0;
       vscode.window.showInformationMessage(
         `VCPedia: 端口 ${config().get('port')}，${connected} 个浏览器连接，` +
-          `${byPath.size} 个活动编辑会话。`
+          `${sessions.size} 个活动编辑会话。`
       );
     }),
     vscode.workspace.onDidSaveTextDocument((doc) => {
       if (byPath.has(doc.uri.fsPath)) push(doc);
+    }),
+    vscode.workspace.onDidCloseTextDocument((doc) => {
+      if (pendingDelete.has(doc.uri.fsPath)) removeFile(doc.uri.fsPath);
     })
   );
 }
