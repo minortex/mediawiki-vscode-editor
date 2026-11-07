@@ -114,6 +114,7 @@ function locateCandidates(text) {
 
   const cleaned = text
     .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<!--|-->/g, '')
     .replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, target, label) => label || target)
     .replace(/'''?/g, '')
     .replace(/\{\{|\}\}/g, '')
