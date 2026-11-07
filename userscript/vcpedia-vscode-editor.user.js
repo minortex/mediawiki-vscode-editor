@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         VCPedia ⇄ VSCode 外部编辑器
 // @namespace    vcpedia-vscode-editor
-// @version      0.3.2
+// @version      0.3.3
 // @description  在 vcpedia.cn 上发起编辑，用 VSCode 改，保存即预览，浏览器内提交
 // @match        https://vcpedia.cn/*
 // @grant        none
@@ -12,7 +12,7 @@
 (() => {
   'use strict';
 
-  console.info('[vcpedia-vscode] userscript 0.3.2 loaded');
+  console.info('[vcpedia-vscode] userscript 0.3.3 loaded');
 
   const WS_URL = 'ws://127.0.0.1:8927';
   const RECONNECT_MS = 1000;
@@ -89,7 +89,8 @@
           msg.scope,
           msg.label,
           msg.prev,
-          msg.next
+          msg.next,
+          msg.labelOccurrence
         );
       }
     });
@@ -630,7 +631,7 @@
     return null;
   }
 
-  function scrollToOccurrence(text, occurrence, scope, label, prev, next) {
+  function scrollToOccurrence(text, occurrence, scope, label, prev, next, labelOccurrence) {
     if (!text) return false;
     const all = document.querySelector('#mw-content-text');
     if (!all) return false;
@@ -654,8 +655,8 @@
       push(text, wanted);
     } else {
       if (label) {
-        push(label + ' ' + text, 1);
-        push(label + text, 1);
+        push(label + ' ' + text, labelOccurrence || 1);
+        push(label + text, labelOccurrence || 1);
       }
       if (next) {
         push(text + ' ' + next, 1);

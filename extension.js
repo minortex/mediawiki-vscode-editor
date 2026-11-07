@@ -181,6 +181,17 @@ function extractItems(text) {
     items[i].prev = i > 0 ? items[i - 1].text.slice(-24) : null;
     items[i].next = i < items.length - 1 ? items[i + 1].text.slice(0, 24) : null;
   }
+  const labelCounts = new Map();
+  for (const item of items) {
+    if (!item.label) {
+      item.labelOccurrence = 0;
+      continue;
+    }
+    const key = [item.scope?.type || '', item.scope?.index ?? '', item.label, item.text].join('\u0001');
+    const n = (labelCounts.get(key) || 0) + 1;
+    labelCounts.set(key, n);
+    item.labelOccurrence = n;
+  }
   return items;
 }
 
@@ -403,6 +414,7 @@ function activate(context) {
             occurrence: occurrenceOf(items, itemIndex),
             scope: item.scope,
             label: item.label,
+            labelOccurrence: item.labelOccurrence,
             prev: item.prev,
             next: item.next,
           });
