@@ -40,7 +40,7 @@ VSCode --保存--> 浏览器（action=parse 渲染预览）
 
 - 整页编辑：点右下角按钮，或按 `Alt+E`。
 - 章节编辑：点该节 `[编辑]` 后面的 `VSCode`。
-- VSCode 打开临时文件（默认 `$TMPDIR/vcpedia-edit/<页面名>[.s<节号>].wiki`），改完 `Ctrl+S`。
+- VSCode 打开临时文件（默认 `$XDG_CACHE_HOME/vcpedia-edit/<页面名>[.s<节号>].<时间戳>.wiki`，即 `~/.cache/vcpedia-edit`），改完 `Ctrl+S`。
 - 浏览器正文即时变成预览，底部浮条可填编辑摘要、标记小编辑。
 - 点「保存更改」提交；「取消」恢复原页面并丢弃本次会话。
 - 提交冲突（别人先改了）时会提示，取消后重新发起编辑。
@@ -57,7 +57,7 @@ VSCode --保存--> 浏览器（action=parse 渲染预览）
 VSCode 设置：
 
 - `vcpediaEditor.port`：本地 WebSocket 端口，默认 `8927`。
-- `vcpediaEditor.tempDir`：源码落盘目录，默认系统临时目录下的 `vcpedia-edit`。
+- `vcpediaEditor.tempDir`：源码落盘目录，默认用户缓存目录 `$XDG_CACHE_HOME/vcpedia-edit`（macOS 为 `~/Library/Caches/vcpedia-edit`，Windows 为 `%LOCALAPPDATA%\vcpedia-edit`）。断电或重启后文件仍在；需要更持久的归档可改到 `~/.local/share`。
 - `vcpediaEditor.allowedOrigin`：允许连接的用户脚本来源，默认 `https://vcpedia.cn`。
 
 修改端口时同步改用户脚本顶部的 `WS_URL`。

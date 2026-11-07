@@ -25,6 +25,20 @@ function safeName(title) {
   return title.replace(/[\\/:*?"<>|\r\n]/g, '_');
 }
 
+function defaultDir() {
+  if (process.platform === 'win32') {
+    const base =
+      process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+    return path.join(base, 'vcpedia-edit');
+  }
+  if (process.platform === 'darwin') {
+    return path.join(os.homedir(), 'Library', 'Caches', 'vcpedia-edit');
+  }
+  const base =
+    process.env.XDG_CACHE_HOME || path.join(os.homedir(), '.cache');
+  return path.join(base, 'vcpedia-edit');
+}
+
 function stamp(date = new Date()) {
   const p = (n) => String(n).padStart(2, '0');
   return (
@@ -87,7 +101,7 @@ async function closeAndDelete(fsPath) {
 }
 
 async function openSession(msg, ws) {
-  const dir = config().get('tempDir') || path.join(os.tmpdir(), 'vcpedia-edit');
+  const dir = config().get('tempDir') || defaultDir();
   await fs.promises.mkdir(dir, { recursive: true });
   const suffix = msg.section != null ? `.s${msg.section}` : '';
   const fsPath = path.join(dir, `${safeName(msg.title)}${suffix}.${stamp()}.wiki`);

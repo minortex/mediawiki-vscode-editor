@@ -37,7 +37,7 @@
         "vcpediaEditor.tempDir": {
           "type": "string",
           "default": "",
-          "description": "源码落盘目录。留空则使用系统临时目录下的 vcpedia-edit。"
+          "description": "源码落盘目录。留空则使用用户缓存目录：$XDG_CACHE_HOME/vcpedia-edit（Linux）、~/Library/Caches/vcpedia-edit（macOS）、%LOCALAPPDATA%\\vcpedia-edit（Windows）。"
         },
         "vcpediaEditor.allowedOrigin": {
           "type": "string",
