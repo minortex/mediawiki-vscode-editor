@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         VCPedia ⇄ VSCode 外部编辑器
 // @namespace    vcpedia-vscode-editor
-// @version      0.2.1
+// @version      0.2.2
 // @description  在 vcpedia.cn 上发起编辑，用 VSCode 改，保存即预览，浏览器内提交
 // @match        https://vcpedia.cn/*
 // @grant        none
@@ -12,7 +12,7 @@
 (() => {
   'use strict';
 
-  console.info('[vcpedia-vscode] userscript 0.2.1 loaded');
+  console.info('[vcpedia-vscode] userscript 0.2.2 loaded');
 
   const WS_URL = 'ws://127.0.0.1:8927';
   const RECONNECT_MS = 1000;
@@ -83,7 +83,11 @@
         session.remoteDirty = !!msg.dirty;
         refreshBar();
       } else if (msg.type === 'scroll') {
-        scrollToPosition(msg.heading, msg.ratio);
+        const el = msg.template
+          ? templateMap.get(normTemplate(msg.template))
+          : null;
+        if (el) el.scrollIntoView({ block: 'center' });
+        else scrollToPosition(msg.heading, msg.ratio, msg.center);
       }
     });
   }
@@ -323,10 +327,11 @@
       if (s === String(section)) return a.closest('h1,h2,h3,h4,h5,h6');
     }
     // 2. by the headline anchor id returned by the parser
-    const id = parsedHeading?.querySelector('.mw-headline')?.id;
+    const id =
+      parsedHeading?.id || parsedHeading?.querySelector('.mw-headline')?.id;
     if (id) {
-      for (const span of root.querySelectorAll('.mw-headline')) {
-        if (span.id === id) return span.closest('h1,h2,h3,h4,h5,h6');
+      for (const h of root.querySelectorAll('h1,h2,h3,h4,h5,h6')) {
+        if (h.id === id || h.querySelector('.mw-headline')?.id === id) return h;
       }
     }
     return null;
@@ -418,6 +423,7 @@
         '无法在页面中定位该章节，未应用预览（页面保持原样）';
       return;
     }
+    buildTemplateMap();
     const st = bar().querySelector('.vcpe-status');
     st.textContent = `预览已更新 ${new Date().toLocaleTimeString()}`;
     addSectionButtons();
@@ -517,11 +523,64 @@
     return true;
   }
 
+  function normTemplate(name) {
+    return String(name || '')
+      .trim()
+      .replace(/^Template:/i, '')
+      .replace(/_/g, ' ')
+      .replace(/\s+/g, ' ')
+      .toLowerCase();
+  }
+
+  let templateMap = new Map();
+
+  function templateNameOf(el) {
+    try {
+      const mw = JSON.parse(el.getAttribute('data-mw') || '{}');
+      const parts = Array.isArray(mw.parts) ? mw.parts : [];
+      for (const part of parts) {
+        const target = part?.template?.target;
+        if (!target) continue;
+        let raw = target.href ? target.href.replace(/^\.\/Template:/i, '') : target.wt;
+        try {
+          raw = decodeURIComponent(raw);
+        } catch {}
+        const name = normTemplate(raw);
+        if (name) return name;
+      }
+    } catch {}
+    return null;
+  }
+
+  function containerFor(el, root) {
+    const section = el.closest('section');
+    if (section && section.getBoundingClientRect().height > 40) return section;
+    let node = el.parentElement;
+    while (node && node !== root) {
+      if (node.getBoundingClientRect().height > 40) return node;
+      node = node.parentElement;
+    }
+    return el;
+  }
+
+  function buildTemplateMap() {
+    templateMap = new Map();
+    const root = document.querySelector('#mw-content-text');
+    if (!root) return;
+    root.querySelectorAll('[data-mw]').forEach((el) => {
+      const name = templateNameOf(el);
+      if (!name || templateMap.has(name)) return;
+      const container = containerFor(el, root);
+      templateMap.set(name, container);
+      container.setAttribute('data-vcpe-template', name);
+    });
+  }
+
   function previewHeadings() {
     const root = document.querySelector('#mw-content-text');
     if (!root) return [];
     return [...root.querySelectorAll('h1,h2,h3,h4,h5,h6')].filter(
-      (h) => h.querySelector('.mw-headline, span[id]')
+      (h) => h.id || h.querySelector('.mw-headline, span[id]')
     );
   }
 
@@ -542,7 +601,7 @@
     return { heading: index, ratio };
   }
 
-  function scrollToPosition(heading, ratio) {
+  function scrollToPosition(heading, ratio, center) {
     const heads = previewHeadings();
     const root = document.querySelector('#mw-content-text');
     if (!root) return;
@@ -557,7 +616,9 @@
         ? heads[index + 1].getBoundingClientRect().top + window.scrollY
         : rect.bottom + window.scrollY;
     const span = Math.max(1, next - base);
-    window.scrollTo({ top: Math.max(0, base + (ratio || 0) * span - 80), behavior: 'auto' });
+    const target = base + (ratio || 0) * span;
+    const offset = center ? window.innerHeight * 0.25 : 80;
+    window.scrollTo({ top: Math.max(0, target - offset), behavior: 'auto' });
   }
 
   function boot() {
@@ -587,6 +648,17 @@
           const url = new URL(a.href, location.href);
           url.searchParams.set('vcpe-edit', '1');
           window.open(url.toString(), '_blank', 'noopener');
+          return;
+        }
+        const tplEl = e.target.closest('[data-vcpe-template]');
+        const mwEl = e.target.closest('[data-mw]');
+        const template = tplEl
+          ? tplEl.getAttribute('data-vcpe-template')
+          : mwEl
+            ? templateNameOf(mwEl)
+            : null;
+        if (template) {
+          send({ type: 'locate', sessionId: session.id, template });
           return;
         }
         const { heading, ratio } = locateFromPoint(e.clientY);

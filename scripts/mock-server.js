@@ -26,7 +26,22 @@ const wss = startWsServer({
       'section=' + msg.section
     );
     if (msg.type === 'open') {
-      if (mode === 'update') {
+      if (mode === 'template') {
+        setTimeout(() => {
+          if (ws.readyState !== 1) return;
+          ws.send(
+            JSON.stringify({
+              type: 'scroll',
+              sessionId: msg.sessionId,
+              template: 'VOCALOID_Songbox',
+              heading: -1,
+              ratio: 0,
+              center: true,
+            })
+          );
+          console.log('[mock] sent scroll template');
+        }, 800);
+      } else if (mode === 'update') {
         setTimeout(() => {
           const text = String(msg.text) + '\n\nVSCode 测试标记';
           ws.send(JSON.stringify({ type: 'update', sessionId: msg.sessionId, text }));

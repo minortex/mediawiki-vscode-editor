@@ -29,7 +29,7 @@ VSCode --保存--> 浏览器（action=parse 渲染预览）
 
 2. 浏览器端二选一：
 
-   - Tampermonkey：新建脚本，粘贴 `userscript/vcpedia-vscode-editor.user.js` 的内容。更新时打开同一条目，全选删除后粘贴新文件再保存。装好后控制台应出现 `[vcpedia-vscode] userscript 0.2.1 loaded`。
+   - Tampermonkey：新建脚本，粘贴 `userscript/vcpedia-vscode-editor.user.js` 的内容。更新时打开同一条目，全选删除后粘贴新文件再保存。装好后控制台应出现 `[vcpedia-vscode] userscript 0.2.2 loaded`。
    - 或直接放进个人 JS：打开 `https://vcpedia.cn/User:<你的用户名>/common.js`（红链就创建），粘贴同一份内容并保存，然后 `?action=purge` 或 Ctrl+F5 刷新。个人 JS 只在你登录时加载，效果与 Tampermonkey 相同。
 
    不要放进 `MediaWiki:Common.js`：那需要 `editinterface` 权限，且会让所有访客都去连本机端口。
@@ -73,6 +73,8 @@ localStorage.setItem('vcpe-editor-scheme', 'vscode')
 - 点击预览正文里的任意位置（非链接），VSCode 会把光标定位到对应源码行，并在状态栏提示行号。
 - VSCode 里移动光标，预览会滚动到对应位置。
 - 粒度是“章节 + 章节内相对位置”：先找最近的 `== 标题 ==`，再按该章节内的纵向比例换算成源码行。模板展开导致的块数量差异不会破坏同步，但精度不是字符级。
+- 光标位于 `{{模板|...}}` 内部时，不再按行比例滚动，而是把该模板所在区域（章节起点或页面顶部）居中显示，避免信息框这类模板造成大幅偏移。
+- 预览仍使用站点默认（legacy）解析器。Parsoid 输出虽然带模板标记，但会破坏 Widget 等扩展的输出，因此不用于预览。
 - 链接点击仍然优先执行“打开新标签编辑目标页”，不会触发定位。
 - 光标同步 200ms 防抖；由页面点击触发的定位在 700ms 内不会回传，避免来回抖动。
 

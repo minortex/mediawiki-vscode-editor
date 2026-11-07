@@ -101,6 +101,51 @@ async function closeAndDelete(fsPath) {
   } catch {}
 }
 
+function normTemplate(name) {
+  return String(name || '')
+    .trim()
+    .replace(/^Template:/i, '')
+    .replace(/_/g, ' ')
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+}
+
+function templateAtLine(doc, line) {
+  const start = Math.max(0, line - 200);
+  let text = '';
+  for (let i = start; i <= line; i++) text += doc.lineAt(i).text + '\n';
+
+  let depth = 0;
+  let open = -1;
+  for (let i = 0; i < text.length - 1; i++) {
+    if (text[i] === '{' && text[i + 1] === '{') {
+      if (depth === 0) open = i;
+      depth++;
+      i++;
+    } else if (text[i] === '}' && text[i + 1] === '}') {
+      depth = Math.max(0, depth - 1);
+      i++;
+      if (depth === 0) open = -1;
+    }
+  }
+  if (open < 0) return null;
+  const m = /^\s*([^\n|}]+)/.exec(text.slice(open + 2));
+  return m ? normTemplate(m[1]) : null;
+}
+
+function findTemplateLine(doc, name) {
+  const target = normTemplate(name);
+  for (let i = 0; i < doc.lineCount; i++) {
+    const text = doc.lineAt(i).text;
+    const re = /\{\{\s*([^\n|}]+)/g;
+    let m;
+    while ((m = re.exec(text))) {
+      if (normTemplate(m[1]) === target) return i;
+    }
+  }
+  return -1;
+}
+
 function headingLines(doc) {
   const heads = [];
   for (let i = 0; i < doc.lineCount; i++) {
@@ -135,18 +180,28 @@ function lineForPosition(doc, heading, ratio) {
 
 let suppressScrollUntil = 0;
 
+function revealLine(editor, line) {
+  const pos = new vscode.Position(line, 0);
+  suppressScrollUntil = Date.now() + 700;
+  editor.selection = new vscode.Selection(pos, pos);
+  editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
+  vscode.window.setStatusBarMessage(`VCPedia: 定位到第 ${line + 1} 行`, 2000);
+}
+
 async function locateInEditor(msg) {
   const meta = sessions.get(msg.sessionId);
   if (!meta) return;
   const doc = vscode.workspace.textDocuments.find((d) => d.uri.fsPath === meta.fsPath);
   if (!doc) return;
   const editor = await vscode.window.showTextDocument(doc, { preview: false });
-  const line = lineForPosition(doc, msg.heading, msg.ratio);
-  const pos = new vscode.Position(line, 0);
-  suppressScrollUntil = Date.now() + 700;
-  editor.selection = new vscode.Selection(pos, pos);
-  editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
-  vscode.window.setStatusBarMessage(`VCPedia: 定位到第 ${line + 1} 行`, 2000);
+  if (msg.template) {
+    const line = findTemplateLine(doc, msg.template);
+    if (line >= 0) {
+      revealLine(editor, line);
+      return;
+    }
+  }
+  revealLine(editor, lineForPosition(doc, msg.heading, msg.ratio));
 }
 
 async function openSession(msg, ws) {
@@ -285,7 +340,21 @@ function activate(context) {
         sessionId,
         setTimeout(() => {
           syncTimers.delete(sessionId);
-          const { heading, ratio } = positionForLine(event.textEditor.document, line);
+          const doc = event.textEditor.document;
+          const template = templateAtLine(doc, line);
+          if (template) {
+            const { heading } = positionForLine(doc, line);
+            broadcast(wss, {
+              type: 'scroll',
+              sessionId,
+              template,
+              heading,
+              ratio: 0,
+              center: true,
+            });
+            return;
+          }
+          const { heading, ratio } = positionForLine(doc, line);
           broadcast(wss, { type: 'scroll', sessionId, heading, ratio });
         }, 200)
       );
