@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         VCPedia ⇄ VSCode 外部编辑器
 // @namespace    vcpedia-vscode-editor
-// @version      0.3.0
+// @version      0.3.1
 // @description  在 vcpedia.cn 上发起编辑，用 VSCode 改，保存即预览，浏览器内提交
 // @match        https://vcpedia.cn/*
 // @grant        none
@@ -12,7 +12,7 @@
 (() => {
   'use strict';
 
-  console.info('[vcpedia-vscode] userscript 0.3.0 loaded');
+  console.info('[vcpedia-vscode] userscript 0.3.1 loaded');
 
   const WS_URL = 'ws://127.0.0.1:8927';
   const RECONNECT_MS = 1000;
@@ -83,7 +83,7 @@
         session.remoteDirty = !!msg.dirty;
         refreshBar();
       } else if (msg.type === 'scroll') {
-        scrollToOccurrence(msg.text, msg.occurrence);
+        scrollToOccurrence(msg.text, msg.occurrence, msg.scope);
       }
     });
   }
@@ -571,35 +571,63 @@
   function findTextRange(root, text, occurrence) {
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     const nodes = [];
-    let offset = 0;
+    let raw = '';
     let node;
     while ((node = walker.nextNode())) {
       if (node.parentElement?.closest('script,style')) continue;
-      const len = node.nodeValue.length;
-      nodes.push({ node, start: offset, end: offset + len });
-      offset += len;
+      const start = raw.length;
+      raw += node.nodeValue;
+      nodes.push({ node, start, end: raw.length });
     }
-    const all = nodes.map((n) => n.node.nodeValue).join('');
+    // Map whitespace-normalized text back to raw offsets, so full-width spaces
+    // in <poem> lines still match the normalized text sent from VSCode.
+    let norm = '';
+    const map = [];
+    let space = false;
+    for (let i = 0; i < raw.length; i++) {
+      if (/\s/.test(raw[i])) {
+        if (!space) {
+          norm += ' ';
+          map.push(i);
+          space = true;
+        }
+      } else {
+        norm += raw[i];
+        map.push(i);
+        space = false;
+      }
+    }
+    const needle = String(text || '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!needle) return null;
     let index = -1;
     let seen = 0;
-    while ((index = all.indexOf(text, index + 1)) >= 0) {
+    while ((index = norm.indexOf(needle, index + 1)) >= 0) {
       seen++;
       if (seen < occurrence) continue;
-      const head = nodes.find((n) => index >= n.start && index < n.end);
-      const tail = nodes.find((n) => index + text.length <= n.end);
+      const rawStart = map[index];
+      const rawEnd = (map[Math.min(index + needle.length - 1, map.length - 1)] || rawStart) + 1;
+      const head = nodes.find((n) => rawStart >= n.start && rawStart < n.end);
+      const tail = nodes.find((n) => rawEnd <= n.end && rawEnd > n.start);
       if (!head || !tail) continue;
       const range = document.createRange();
-      range.setStart(head.node, index - head.start);
-      range.setEnd(tail.node, index + text.length - tail.start);
+      range.setStart(head.node, rawStart - head.start);
+      range.setEnd(tail.node, rawEnd - tail.start);
       return range;
     }
     return null;
   }
 
-  function scrollToOccurrence(text, occurrence) {
+  function scrollToOccurrence(text, occurrence, scope) {
     if (!text) return false;
-    const root = document.querySelector('#mw-content-text');
-    if (!root) return false;
+    const all = document.querySelector('#mw-content-text');
+    if (!all) return false;
+    let root = all;
+    if (scope && scope.type === 'poem') {
+      root = all.querySelectorAll('.poem')[scope.index];
+      if (!root) return false;
+    }
     const wanted = Math.max(1, Number(occurrence) || 1);
     const range = findTextRange(root, text, wanted);
     if (!range) return false;

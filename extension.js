@@ -122,32 +122,39 @@ function extractItems(text) {
   wikiParser ||= require('wikiparser-node');
   const root = wikiParser.parse(text);
   const items = [];
-  const add = (value, start) => {
+  let poemCount = 0;
+  const add = (value, start, scope) => {
     const s = simplify(
       String(value || '')
         .replace(/<!--|-->/g, '')
         .replace(/\s+/g, ' ')
         .trim()
     );
-    if (/\\.(jpe?g|png|gif|svg|webp|ogg|mp3|webm|pdf)$/i.test(s)) return;
-    if (s.length >= 2 && s.length <= 60) items.push({ start, text: s });
+    if (/\.(jpe?g|png|gif|svg|webp|ogg|mp3|webm|pdf)$/i.test(s)) return;
+    if (!/[\p{L}\p{N}]/u.test(s)) return;
+    if (s.length >= 2 && s.length <= 60) items.push({ start, text: s, scope });
   };
-  const walk = (node) => {
+  const walk = (node, scope) => {
     const name = node.constructor.name;
+    // <poem> renders inside .poem; restrict matching to that container so
+    // repeated lyrics are not matched against the same words in infoboxes.
+    if (name === 'ExtToken' && String(node.name).toLowerCase() === 'poem') {
+      scope = { type: 'poem', index: poemCount++ };
+    }
     // Only the value part of a parameter is rendered; skip the parameter name.
     if (name === 'ParameterToken') {
-      for (const child of (node.childNodes || []).slice(1)) walk(child);
+      for (const child of (node.childNodes || []).slice(1)) walk(child, scope);
       return;
     }
     // The template name is not rendered text either; skip it and visit parameters.
     if (name === 'TranscludeToken') {
-      for (const child of (node.childNodes || []).slice(1)) walk(child);
+      for (const child of (node.childNodes || []).slice(1)) walk(child, scope);
       return;
     }
     if (name === 'LinkToken') {
       const raw = node.toString();
       const m = /^\[\[([^\]|]+)(?:\|([^\]]+))?\]\]$/.exec(raw);
-      add(m ? (m[2] || m[1]) : raw, node.getAbsoluteIndex());
+      add(m ? (m[2] || m[1]) : raw, node.getAbsoluteIndex(), scope);
       return;
     }
     if (name === 'AstText') {
@@ -156,12 +163,12 @@ function extractItems(text) {
       let cursor = 0;
       for (const part of raw.split(/[•·、,，;；\n]+/)) {
         const idx = raw.indexOf(part, cursor);
-        add(part, base + Math.max(0, idx));
+        add(part, base + Math.max(0, idx), scope);
         cursor = Math.max(cursor, idx + part.length);
       }
       return;
     }
-    for (const child of node.childNodes || []) walk(child);
+    for (const child of node.childNodes || []) walk(child, scope);
   };
   for (const child of root.childNodes || []) walk(child);
   items.sort((a, b) => a.start - b.start);
@@ -191,10 +198,13 @@ function itemAt(items, offset) {
 }
 
 function occurrenceOf(items, index) {
-  const text = items[index].text;
+  const target = items[index];
+  const keyOf = (item) =>
+    item.scope ? `${item.scope.type}:${item.scope.index}` : '';
+  const key = keyOf(target);
   let count = 0;
   for (let i = 0; i <= index; i++) {
-    if (items[i].text === text) count++;
+    if (items[i].text === target.text && keyOf(items[i]) === key) count++;
   }
   return count;
 }
@@ -382,6 +392,7 @@ function activate(context) {
             sessionId,
             text: item.text,
             occurrence: occurrenceOf(items, itemIndex),
+            scope: item.scope,
           });
         }, 200)
       );

@@ -29,7 +29,7 @@ VSCode --保存--> 浏览器（action=parse 渲染预览）
 
 2. 浏览器端二选一：
 
-   - Tampermonkey：新建脚本，粘贴 `userscript/vcpedia-vscode-editor.user.js` 的内容。更新时打开同一条目，全选删除后粘贴新文件再保存。装好后控制台应出现 `[vcpedia-vscode] userscript 0.3.0 loaded`。
+   - Tampermonkey：新建脚本，粘贴 `userscript/vcpedia-vscode-editor.user.js` 的内容。更新时打开同一条目，全选删除后粘贴新文件再保存。装好后控制台应出现 `[vcpedia-vscode] userscript 0.3.1 loaded`。
    - 或直接放进个人 JS：打开 `https://vcpedia.cn/User:<你的用户名>/common.js`（红链就创建），粘贴同一份内容并保存，然后 `?action=purge` 或 Ctrl+F5 刷新。个人 JS 只在你登录时加载，效果与 Tampermonkey 相同。
 
    不要放进 `MediaWiki:Common.js`：那需要 `editinterface` 权限，且会让所有访客都去连本机端口。
@@ -73,6 +73,8 @@ localStorage.setItem('vcpe-editor-scheme', 'vscode')
 - 光标移动后，扩展用 `wikiparser-node` 找到光标处最小的 AST 文本项，连同该文本在文档中的出现序号发给预览。
 - 预览在 `#mw-content-text` 的文本里按序号定位，用跨节点的 `Range` 画高亮（日期、统计句被标签拆开也能命中）。
 - 高亮落在隐藏/折叠内容上时，自动点开 `.mw-collapsible-toggle` 或清除 `display:none` 后重试。
+- `<poem>` 里的歌词按 `.poem` 容器限定，出现序号也在容器内计数，避免标题/信息框里的同名文字造成错位。
+- 匹配前先把空白统一成一个空格（全角空格、换行），所以 `我哭着　也笑着` 这类歌词也能命中。
 - **匹配不到就不动**：不回退到模板区域或章节比例，保持上一次的视口位置。
 - 点击预览正文（非链接）时，取点击处的文本发给 VSCode，按该文本定位源码行。
 
