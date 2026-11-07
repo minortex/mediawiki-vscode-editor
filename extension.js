@@ -102,6 +102,19 @@ async function closeAndDelete(fsPath) {
 }
 
 let wikiParser = null;
+let toSimplified = null;
+
+function simplify(text) {
+  if (!toSimplified) {
+    try {
+      const OpenCC = require('opencc-js');
+      toSimplified = OpenCC.Converter({ from: 'tw', to: 'cn' });
+    } catch {
+      toSimplified = (s) => s;
+    }
+  }
+  return toSimplified(text);
+}
 const itemCache = new Map(); // fsPath -> { version, items }
 
 function extractItems(text) {
@@ -110,10 +123,12 @@ function extractItems(text) {
   const root = wikiParser.parse(text);
   const items = [];
   const add = (value, start) => {
-    const s = String(value || '')
-      .replace(/<!--|-->/g, '')
-      .replace(/\s+/g, ' ')
-      .trim();
+    const s = simplify(
+      String(value || '')
+        .replace(/<!--|-->/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+    );
     if (s.length >= 2 && s.length <= 60) items.push({ start, text: s });
   };
   const walk = (node) => {
@@ -176,7 +191,7 @@ function occurrenceOf(items, index) {
 function locateCandidates(text) {
   const out = [];
   const push = (value) => {
-    const s = String(value || '').trim();
+    const s = simplify(String(value || '').trim());
     if (s.length >= 2 && s.length <= 60 && !out.includes(s)) out.push(s);
   };
 
