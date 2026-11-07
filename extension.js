@@ -101,6 +101,34 @@ async function closeAndDelete(fsPath) {
   } catch {}
 }
 
+function locateCandidates(text) {
+  const out = [];
+  const push = (value) => {
+    const s = String(value || '').trim();
+    if (s.length >= 2 && s.length <= 60 && !out.includes(s)) out.push(s);
+  };
+
+  const linkRe = /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g;
+  let m;
+  while ((m = linkRe.exec(text))) push(m[2] || m[1]);
+
+  const cleaned = text
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, target, label) => label || target)
+    .replace(/'''?/g, '')
+    .replace(/\{\{|\}\}/g, '')
+    .replace(/[|•·、,，;；]/g, '\n');
+
+  for (const part of cleaned.split('\n')) {
+    const s = part.replace(/^[#*:;\s]+/, '').trim();
+    if (!s || s.length < 2) continue;
+    if (/^[a-zA-Z-]+\s*=/.test(s)) continue;
+    if (/^(background|color|style|width|height|font|border|margin|padding)/i.test(s)) continue;
+    push(s.slice(0, 60));
+  }
+  return out.slice(0, 4);
+}
+
 function normTemplate(name) {
   return String(name || '')
     .trim()
@@ -341,6 +369,7 @@ function activate(context) {
         setTimeout(() => {
           syncTimers.delete(sessionId);
           const doc = event.textEditor.document;
+          const texts = locateCandidates(doc.lineAt(line).text);
           const template = templateAtLine(doc, line);
           if (template) {
             const { heading } = positionForLine(doc, line);
@@ -351,11 +380,12 @@ function activate(context) {
               heading,
               ratio: 0,
               center: true,
+              texts,
             });
             return;
           }
           const { heading, ratio } = positionForLine(doc, line);
-          broadcast(wss, { type: 'scroll', sessionId, heading, ratio });
+          broadcast(wss, { type: 'scroll', sessionId, heading, ratio, texts });
         }, 200)
       );
     }),

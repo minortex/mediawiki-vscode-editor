@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         VCPedia ⇄ VSCode 外部编辑器
 // @namespace    vcpedia-vscode-editor
-// @version      0.2.3
+// @version      0.2.4
 // @description  在 vcpedia.cn 上发起编辑，用 VSCode 改，保存即预览，浏览器内提交
 // @match        https://vcpedia.cn/*
 // @grant        none
@@ -12,7 +12,7 @@
 (() => {
   'use strict';
 
-  console.info('[vcpedia-vscode] userscript 0.2.3 loaded');
+  console.info('[vcpedia-vscode] userscript 0.2.4 loaded');
 
   const WS_URL = 'ws://127.0.0.1:8927';
   const RECONNECT_MS = 1000;
@@ -83,6 +83,7 @@
         session.remoteDirty = !!msg.dirty;
         refreshBar();
       } else if (msg.type === 'scroll') {
+        if (scrollToText(msg.texts)) return;
         const el = msg.template
           ? templateMap.get(normTemplate(msg.template))
           : null;
@@ -130,6 +131,7 @@
     .vcpe-bar button:disabled{opacity:.5;cursor:not-allowed}
     .vcpe-bar label{display:flex;align-items:center;gap:4px;white-space:nowrap}
     body.vcpe-editing{padding-bottom:80px}
+    .vcpe-hit{outline:2px solid #3366cc;background:rgba(51,102,204,.08)}
   `;
 
   function injectStyle() {
@@ -588,6 +590,33 @@
       templateMap.set(name, container);
       container.setAttribute('data-vcpe-template', name);
     });
+  }
+
+  function findTextElement(root, text) {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let node;
+    while ((node = walker.nextNode())) {
+      if (node.parentElement?.closest('script,style')) continue;
+      if (node.nodeValue && node.nodeValue.includes(text)) {
+        return node.parentElement;
+      }
+    }
+    return null;
+  }
+
+  function scrollToText(texts) {
+    if (!Array.isArray(texts) || !texts.length) return false;
+    const root = document.querySelector('#mw-content-text');
+    if (!root) return false;
+    for (const text of texts) {
+      const el = findTextElement(root, text);
+      if (!el) continue;
+      el.scrollIntoView({ block: 'center' });
+      el.classList.add('vcpe-hit');
+      setTimeout(() => el.classList.remove('vcpe-hit'), 1600);
+      return true;
+    }
+    return false;
   }
 
   function previewHeadings() {

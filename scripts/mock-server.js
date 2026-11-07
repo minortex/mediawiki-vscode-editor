@@ -33,10 +33,10 @@ const wss = startWsServer({
             JSON.stringify({
               type: 'scroll',
               sessionId: msg.sessionId,
-              template: 'VOCALOID_Songbox',
               heading: -1,
               ratio: 0,
               center: true,
+              texts: ['幸福刑'],
             })
           );
           console.log('[mock] sent scroll template');
