@@ -205,6 +205,11 @@ function activate(context) {
         );
       }
     }),
+    vscode.window.registerUriHandler({
+      handleUri() {
+        vscode.window.setStatusBarMessage('VCPedia: 已就绪，等待浏览器连接…', 5000);
+      },
+    }),
     vscode.commands.registerCommand('vcpediaEditor.status', () => {
       const connected = wss
         ? [...wss.clients].filter((c) => c.readyState === 1).length

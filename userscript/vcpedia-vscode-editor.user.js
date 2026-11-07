@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         VCPedia ⇄ VSCode 外部编辑器
 // @namespace    vcpedia-vscode-editor
-// @version      0.1.0
+// @version      0.2.0
 // @description  在 vcpedia.cn 上发起编辑，用 VSCode 改，保存即预览，浏览器内提交
 // @match        https://vcpedia.cn/*
 // @grant        none
@@ -12,8 +12,15 @@
 (() => {
   'use strict';
 
+  console.info('[vcpedia-vscode] userscript 0.2.0 loaded');
+
   const WS_URL = 'ws://127.0.0.1:8927';
-  const RECONNECT_MS = 10000;
+  const RECONNECT_MS = 1000;
+  // 默认 vscodium://；VS Code 可在本站控制台执行
+  // localStorage.setItem('vcpe-editor-scheme', 'vscode') 切换
+  const EDITOR_SCHEME =
+    localStorage.getItem('vcpe-editor-scheme') || 'vscodium';
+  const EDITOR_URI = `${EDITOR_SCHEME}://local.vcpedia-vscode-editor/wake`;
 
   // ---------- 与站点 API 交互 ----------
   const scriptPath = (window.mw && mw.config.get('wgScriptPath')) || '';
@@ -38,7 +45,9 @@
   // ---------- 连接 VSCode 扩展 ----------
   let socket = null;
   let connected = false;
-  let session = null; // { id, title, section, text, base, start, originalHtml, dirty }
+  let session = null;
+  let pendingEdit = null;
+  let lastLaunch = 0;
 
   function connect() {
     try {
@@ -47,7 +56,15 @@
       setTimeout(connect, RECONNECT_MS);
       return;
     }
-    socket.addEventListener('open', () => { connected = true; refreshStatus(); });
+    socket.addEventListener('open', () => {
+      connected = true;
+      refreshStatus();
+      if (pendingEdit) {
+        const pending = pendingEdit;
+        pendingEdit = null;
+        startEdit(pending.section);
+      }
+    });
     socket.addEventListener('close', () => {
       connected = false;
       refreshStatus();
@@ -67,6 +84,17 @@
         refreshBar();
       }
     });
+  }
+
+  function launchEditor() {
+    if (Date.now() - lastLaunch < 10000) return;
+    lastLaunch = Date.now();
+    notify('正在启动 VSCode…');
+    const frame = document.createElement('iframe');
+    frame.style.display = 'none';
+    frame.src = EDITOR_URI;
+    document.body.append(frame);
+    setTimeout(() => frame.remove(), 3000);
   }
 
   function send(msg) {
@@ -120,8 +148,9 @@
   function refreshStatus() {
     const fab = document.getElementById('vcpe-fab');
     if (fab) {
-      fab.classList.toggle('offline', !connected);
-      fab.title = connected ? 'VSCode 扩展已连接' : 'VSCode 扩展未运行（正在重试）';
+      fab.classList.remove('offline');
+      fab.textContent = connected ? 'VSCode 编辑' : '启动 VSCode';
+      fab.title = connected ? 'VSCode 扩展已连接' : '点击启动 VSCode 并开始编辑';
     }
     const st = document.querySelector('.vcpe-status');
     if (st) st.textContent = connected ? '已连接 VSCode' : 'VSCode 扩展未连接，等待重连…';
@@ -211,7 +240,13 @@
   async function startEdit(section) {
     if (session) return;
     if (!connected) {
-      notify('VSCode 扩展未运行：请先启动扩展（端口 8927）。');
+      pendingEdit = { section: section == null ? null : Number(section) };
+      launchEditor();
+      setTimeout(() => {
+        if (!connected && pendingEdit) {
+          notify('仍未检测到 VSCode 扩展，确认已安装 vcpedia-vscode-editor。', 6000);
+        }
+      }, 15000);
       return;
     }
     const title = mw.config.get('wgPageName');

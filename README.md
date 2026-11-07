@@ -29,7 +29,7 @@ VSCode --保存--> 浏览器（action=parse 渲染预览）
 
 2. 浏览器端二选一：
 
-   - Tampermonkey：新建脚本，粘贴 `userscript/vcpedia-vscode-editor.user.js` 的内容。
+   - Tampermonkey：新建脚本，粘贴 `userscript/vcpedia-vscode-editor.user.js` 的内容。更新时打开同一条目，全选删除后粘贴新文件再保存。装好后控制台应出现 `[vcpedia-vscode] userscript 0.2.0 loaded`。
    - 或直接放进个人 JS：打开 `https://vcpedia.cn/User:<你的用户名>/common.js`（红链就创建），粘贴同一份内容并保存，然后 `?action=purge` 或 Ctrl+F5 刷新。个人 JS 只在你登录时加载，效果与 Tampermonkey 相同。
 
    不要放进 `MediaWiki:Common.js`：那需要 `editinterface` 权限，且会让所有访客都去连本机端口。
@@ -61,6 +61,12 @@ VSCode 设置：
 - `vcpediaEditor.allowedOrigin`：允许连接的用户脚本来源，默认 `https://vcpedia.cn`。
 
 修改端口时同步改用户脚本顶部的 `WS_URL`。
+
+编辑器唤起协议默认 `vscodium://`。如果用的是 VS Code，在 vcpedia 页面的控制台执行一次：
+
+```js
+localStorage.setItem('vcpe-editor-scheme', 'vscode')
+```
 
 ## 限制
 
