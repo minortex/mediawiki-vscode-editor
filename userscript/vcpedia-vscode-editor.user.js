@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         VCPedia ⇄ VSCode 外部编辑器
 // @namespace    vcpedia-vscode-editor
-// @version      0.2.0
+// @version      0.2.1
 // @description  在 vcpedia.cn 上发起编辑，用 VSCode 改，保存即预览，浏览器内提交
 // @match        https://vcpedia.cn/*
 // @grant        none
@@ -12,7 +12,7 @@
 (() => {
   'use strict';
 
-  console.info('[vcpedia-vscode] userscript 0.2.0 loaded');
+  console.info('[vcpedia-vscode] userscript 0.2.1 loaded');
 
   const WS_URL = 'ws://127.0.0.1:8927';
   const RECONNECT_MS = 1000;
@@ -82,6 +82,8 @@
       } else if (msg.type === 'state') {
         session.remoteDirty = !!msg.dirty;
         refreshBar();
+      } else if (msg.type === 'scroll') {
+        scrollToPosition(msg.heading, msg.ratio);
       }
     });
   }
@@ -515,6 +517,49 @@
     return true;
   }
 
+  function previewHeadings() {
+    const root = document.querySelector('#mw-content-text');
+    if (!root) return [];
+    return [...root.querySelectorAll('h1,h2,h3,h4,h5,h6')].filter(
+      (h) => h.querySelector('.mw-headline, span[id]')
+    );
+  }
+
+  function locateFromPoint(clientY) {
+    const heads = previewHeadings();
+    let index = -1;
+    for (let i = 0; i < heads.length; i++) {
+      if (heads[i].getBoundingClientRect().top <= clientY) index = i;
+      else break;
+    }
+    const root = document.querySelector('#mw-content-text');
+    const rect = root.getBoundingClientRect();
+    const base = index >= 0 ? heads[index].getBoundingClientRect().top : rect.top;
+    const next =
+      index + 1 < heads.length ? heads[index + 1].getBoundingClientRect().top : rect.bottom;
+    const span = Math.max(1, next - base);
+    const ratio = Math.max(0, Math.min(1, (clientY - base) / span));
+    return { heading: index, ratio };
+  }
+
+  function scrollToPosition(heading, ratio) {
+    const heads = previewHeadings();
+    const root = document.querySelector('#mw-content-text');
+    if (!root) return;
+    const rect = root.getBoundingClientRect();
+    const index = Math.min(heading ?? -1, heads.length - 1);
+    const base =
+      index >= 0
+        ? heads[index].getBoundingClientRect().top + window.scrollY
+        : rect.top + window.scrollY;
+    const next =
+      index + 1 < heads.length
+        ? heads[index + 1].getBoundingClientRect().top + window.scrollY
+        : rect.bottom + window.scrollY;
+    const span = Math.max(1, next - base);
+    window.scrollTo({ top: Math.max(0, base + (ratio || 0) * span - 80), behavior: 'auto' });
+  }
+
   function boot() {
     if (mw.config.get('wgAction') !== 'view') return;
     injectStyle();
@@ -534,13 +579,18 @@
       'click',
       (e) => {
         if (!session) return;
+        if (!e.target.closest('#mw-content-text')) return;
         const a = e.target.closest('a');
-        if (!a || !a.closest('#mw-content-text')) return;
-        if (!isArticleLink(a)) return;
-        e.preventDefault();
-        const url = new URL(a.href, location.href);
-        url.searchParams.set('vcpe-edit', '1');
-        window.open(url.toString(), '_blank', 'noopener');
+        if (a) {
+          if (!isArticleLink(a)) return;
+          e.preventDefault();
+          const url = new URL(a.href, location.href);
+          url.searchParams.set('vcpe-edit', '1');
+          window.open(url.toString(), '_blank', 'noopener');
+          return;
+        }
+        const { heading, ratio } = locateFromPoint(e.clientY);
+        send({ type: 'locate', sessionId: session.id, heading, ratio });
       },
       true
     );

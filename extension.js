@@ -13,6 +13,7 @@ const sessions = new Map(); // sessionId -> { fsPath, ws, title, section }
 const byPath = new Map(); // fsPath -> sessionId
 const wsSessions = new Map(); // ws -> Set<sessionId>
 const dirtyTimers = new Map(); // fsPath -> timeout
+const syncTimers = new Map(); // sessionId -> timeout
 
 // 只有这些结果代表用户在页面上明确确认过，才允许删除临时文件
 const DELETE_RESULTS = new Set(['saved', 'unchanged', 'discarded']);
@@ -100,6 +101,54 @@ async function closeAndDelete(fsPath) {
   } catch {}
 }
 
+function headingLines(doc) {
+  const heads = [];
+  for (let i = 0; i < doc.lineCount; i++) {
+    const m = /^(={1,6})\s*(.+?)\s*\1\s*$/.exec(doc.lineAt(i).text);
+    if (m) heads.push({ line: i, level: m[1].length, title: m[2] });
+  }
+  return heads;
+}
+
+function positionForLine(doc, line) {
+  const heads = headingLines(doc);
+  let index = -1;
+  for (let i = 0; i < heads.length; i++) {
+    if (heads[i].line <= line) index = i;
+  }
+  const start = index >= 0 ? heads[index].line : 0;
+  const end = index + 1 < heads.length ? heads[index + 1].line : doc.lineCount;
+  const ratio = end > start ? (line - start) / (end - start) : 0;
+  return { heading: index, ratio: Math.max(0, Math.min(1, ratio)) };
+}
+
+function lineForPosition(doc, heading, ratio) {
+  const heads = headingLines(doc);
+  const index = Math.max(-1, Math.min(heading, heads.length - 1));
+  if (index === -1) {
+    return Math.max(0, Math.min(doc.lineCount - 1, Math.round((ratio || 0) * doc.lineCount)));
+  }
+  const start = heads[index].line;
+  const end = index + 1 < heads.length ? heads[index + 1].line : doc.lineCount;
+  return Math.min(end - 1, start + Math.round((ratio || 0) * Math.max(0, end - start)));
+}
+
+let suppressScrollUntil = 0;
+
+async function locateInEditor(msg) {
+  const meta = sessions.get(msg.sessionId);
+  if (!meta) return;
+  const doc = vscode.workspace.textDocuments.find((d) => d.uri.fsPath === meta.fsPath);
+  if (!doc) return;
+  const editor = await vscode.window.showTextDocument(doc, { preview: false });
+  const line = lineForPosition(doc, msg.heading, msg.ratio);
+  const pos = new vscode.Position(line, 0);
+  suppressScrollUntil = Date.now() + 700;
+  editor.selection = new vscode.Selection(pos, pos);
+  editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
+  vscode.window.setStatusBarMessage(`VCPedia: 定位到第 ${line + 1} 行`, 2000);
+}
+
 async function openSession(msg, ws) {
   const dir = config().get('tempDir') || defaultDir();
   await fs.promises.mkdir(dir, { recursive: true });
@@ -157,6 +206,8 @@ function handleMessage(msg, ws) {
     );
   } else if (msg.type === 'finish') {
     finishSession(msg).catch(() => {});
+  } else if (msg.type === 'locate') {
+    locateInEditor(msg).catch(() => {});
   }
 }
 
@@ -223,6 +274,21 @@ function activate(context) {
       if (!byPath.has(doc.uri.fsPath)) return;
       push(doc);
       notifyDirty(doc);
+    }),
+    vscode.window.onDidChangeTextEditorSelection((event) => {
+      const sessionId = byPath.get(event.textEditor.document.uri.fsPath);
+      if (!sessionId || !wss) return;
+      if (Date.now() < suppressScrollUntil) return;
+      const line = event.selections[0]?.active.line ?? 0;
+      clearTimeout(syncTimers.get(sessionId));
+      syncTimers.set(
+        sessionId,
+        setTimeout(() => {
+          syncTimers.delete(sessionId);
+          const { heading, ratio } = positionForLine(event.textEditor.document, line);
+          broadcast(wss, { type: 'scroll', sessionId, heading, ratio });
+        }, 200)
+      );
     }),
     vscode.workspace.onDidChangeTextDocument((event) => {
       const fsPath = event.document.uri.fsPath;
