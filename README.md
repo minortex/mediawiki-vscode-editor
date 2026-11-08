@@ -85,7 +85,7 @@ localStorage.setItem('vcpe-editor-scheme', 'vscode')
 在 InPageEdit 设置 → 插件商店里添加注册表：
 
 ```
-https://cdn.jsdelivr.net/gh/minortex/mediawiki-vscode-editor@main/ipe-plugin/registry.json
+https://cdn.jsdelivr.net/gh/minortex/mediawiki-vscode-editor@latest/ipe-plugin/registry.json
 ```
 
 安装后由插件商店启用/禁用/卸载。也可以直接把 `ipe-plugin/mediawiki-vscode-ipe.js` 放进个人 JS 或 Tampermonkey。
