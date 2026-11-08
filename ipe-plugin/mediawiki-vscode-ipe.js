@@ -54,8 +54,17 @@
     bar.innerHTML =
       '<span class="vcpe-ipe-status">VSCode 编辑中</span>' +
       '<input type="text" class="vcpe-ipe-summary" placeholder="编辑摘要">' +
+      '<select class="vcpe-ipe-watchlist">' +
+      '<option value="preferences">遵循 MW 首选</option>' +
+      '<option value="nochange">保持当前状态</option>' +
+      '<option value="watch">添加到监视列表</option>' +
+      '<option value="unwatch">从监视列表移除</option>' +
+      '</select>' +
       '<label><input type="checkbox" class="vcpe-ipe-minor"> 小编辑</label>' +
+      '<label><input type="checkbox" class="vcpe-ipe-reload" checked> 保存后刷新</label>' +
       '<button class="vcpe-ipe-submit is-primary">提交</button>' +
+      '<button class="vcpe-ipe-preview">预览</button>' +
+      '<button class="vcpe-ipe-diff">差异</button>' +
       '<button class="vcpe-ipe-cancel">取消</button>';
     document.body.append(bar);
     bar.querySelector('.vcpe-ipe-submit').addEventListener('click', function () {
@@ -64,6 +73,25 @@
     bar.querySelector('.vcpe-ipe-cancel').addEventListener('click', function () {
       restorePage();
       endSession();
+    });
+    bar.querySelector('.vcpe-ipe-preview').addEventListener('click', function () {
+      if (!session) return;
+      var qp = window.ipe && window.ipe.get && window.ipe.get('quickPreview');
+      if (qp) qp(session.text, {}, session.wikiPage);
+    });
+    bar.querySelector('.vcpe-ipe-diff').addEventListener('click', function () {
+      if (!session) return;
+      var qd = window.ipe && window.ipe.get && window.ipe.get('quickDiff');
+      if (!qd) return;
+      var from = (session.wikiPage.revisions && session.wikiPage.revisions[0] && session.wikiPage.revisions[0].content) || '';
+      if (from === session.text) return;
+      qd.comparePages({
+        fromtitle: session.title,
+        fromtext: from,
+        totitle: session.title,
+        totext: session.text,
+        topst: true,
+      });
     });
     return bar;
   }
@@ -398,6 +426,10 @@
     if (!session) return;
     var summaryInput = bar.querySelector('.vcpe-ipe-summary');
     var minorInput = bar.querySelector('.vcpe-ipe-minor');
+    var watchInput = bar.querySelector('.vcpe-ipe-watchlist');
+    var reloadInput = bar.querySelector('.vcpe-ipe-reload');
+    session.watchlist = watchInput ? watchInput.value : 'nochange';
+    session.reload = !!(reloadInput && reloadInput.checked);
     setStatus('正在保存文件…');
     send({
       type: 'request-save',
@@ -415,11 +447,11 @@
         summary: summary || '',
         minor: !!minor,
         section: session.section,
-        watchlist: 'nochange',
+        watchlist: session.watchlist || 'nochange',
       });
       send({ type: 'save-result', sessionId: session.id, ok: true });
-      setStatus('已保存，正在刷新…', 'ok');
-      setTimeout(function () { location.reload(); }, 800);
+      setStatus(session.reload === false ? '已保存' : '已保存，正在刷新…', 'ok');
+      if (session.reload !== false) setTimeout(function () { location.reload(); }, 800);
     } catch (e) {
       var message = (e && e.message) || String(e);
       send({ type: 'save-result', sessionId: session.id, ok: false, error: message });
@@ -444,6 +476,9 @@
     ipeCtx.plugin({
       name: 'vscode-editor',
       apply: function (ctx) {
+        ctx.on('quick-edit/show-modal', function (payload) {
+          try { payload.modal.close(); } catch (e) {}
+        });
         ctx.on('quick-edit/wiki-page', function (payload) {
           startEdit(payload).catch(function (e) {
             status('启动失败：' + ((e && e.message) || e));
