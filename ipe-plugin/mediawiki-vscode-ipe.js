@@ -37,15 +37,18 @@
     var style = document.createElement('style');
     style.id = barStyleId;
     style.textContent = [
-      '.vcpe-ipe-bar{position:fixed;left:0;right:0;bottom:0;z-index:2147483000;display:flex;align-items:center;gap:12px;padding:10px 16px;background:#fff;border-top:1px solid #c8ccd1;box-shadow:0 -2px 10px rgba(0,0,0,.12);font-size:14px;color:#202122;}',
-      '.vcpe-ipe-bar .vcpe-ipe-status{margin-right:auto;color:#54595d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:42%;}',
+      '.vcpe-ipe-bar{position:fixed;left:0;right:0;bottom:0;z-index:2147483001;display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:#fff;border-top:2px solid #3366cc;padding:10px 16px;box-shadow:0 -2px 12px rgba(0,0,0,.15);font-size:14px;color:#202122;}',
+      '.vcpe-ipe-bar .vcpe-ipe-status{flex:1 1 180px;color:#72777d;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
       '.vcpe-ipe-bar .vcpe-ipe-status.error{color:#d33;}',
       '.vcpe-ipe-bar .vcpe-ipe-status.ok{color:#14866d;}',
-      '.vcpe-ipe-bar input[type=text]{width:220px;padding:6px 8px;border:1px solid #a2a9b1;border-radius:2px;font-size:14px;}',
-      '.vcpe-ipe-bar button{padding:6px 14px;border:1px solid #a2a9b1;border-radius:2px;background:#f8f9fa;cursor:pointer;font-size:14px;color:#202122;}',
+      '.vcpe-ipe-bar input[type=text]{flex:1 1 220px;min-width:160px;padding:6px 10px;border:1px solid #a2a9b1;border-radius:4px;font-size:14px;}',
+      '.vcpe-ipe-bar select{padding:6px 10px;border:1px solid #a2a9b1;border-radius:4px;background:#fff;font-size:14px;color:#202122;}',
+      '.vcpe-ipe-bar button{padding:6px 14px;border-radius:4px;border:1px solid #a2a9b1;background:#f8f9fa;cursor:pointer;font-size:14px;color:#202122;}',
       '.vcpe-ipe-bar button:hover{background:#eaecf0;}',
-      '.vcpe-ipe-bar button.is-primary{background:#36c;border-color:#36c;color:#fff;}',
+      '.vcpe-ipe-bar button.is-primary{background:#3366cc;border-color:#3366cc;color:#fff;font-weight:600;}',
       '.vcpe-ipe-bar button.is-primary:hover{background:#2a56a8;}',
+      '.vcpe-ipe-bar label{display:flex;align-items:center;gap:4px;white-space:nowrap;}',
+      'body.vcpe-ipe-editing{padding-bottom:96px;}',
     ].join('\n');
     document.head.append(style);
   }
@@ -75,21 +78,16 @@
       '<label><input type="checkbox" class="vcpe-ipe-minor"> 小编辑</label>' +
       '<label><input type="checkbox" class="vcpe-ipe-reload" checked> 保存后刷新</label>' +
       '<button class="vcpe-ipe-submit is-primary">提交</button>' +
-      '<button class="vcpe-ipe-preview">预览</button>' +
       '<button class="vcpe-ipe-diff">差异</button>' +
       '<button class="vcpe-ipe-cancel">取消</button>';
     document.body.append(bar);
+    document.body.classList.add('vcpe-ipe-editing');
     bar.querySelector('.vcpe-ipe-submit').addEventListener('click', function () {
       requestSave(bar);
     });
     bar.querySelector('.vcpe-ipe-cancel').addEventListener('click', function () {
       restorePage();
       endSession();
-    });
-    bar.querySelector('.vcpe-ipe-preview').addEventListener('click', function () {
-      if (!session) return;
-      var qp = window.ipe && window.ipe.get && window.ipe.get('quickPreview');
-      if (qp) qp(session.text, {}, session.wikiPage);
     });
     bar.querySelector('.vcpe-ipe-diff').addEventListener('click', function () {
       if (!session) return;
@@ -396,6 +394,7 @@
     clearTimeout(previewTimer);
     var bar = document.querySelector('.vcpe-ipe-bar');
     if (bar) bar.remove();
+    document.body.classList.remove('vcpe-ipe-editing');
   }
 
   async function startEdit(payload) {
