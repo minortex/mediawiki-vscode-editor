@@ -3,6 +3,8 @@
  */
 (function () {
   'use strict';
+  if (window.__vcpeIpeRegistered) return;
+  window.__vcpeIpeRegistered = true;
 
   var WS_URL = 'ws://127.0.0.1:8927';
   var RECONNECT_MS = 5000;
