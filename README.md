@@ -4,7 +4,7 @@
 
 ## 组成
 
-RTY-MARKER- `userscript/mediawiki-vscode-editor.user.js`：Tampermonkey 脚本，运行在 vDIRTYDIRTYcpedia.cn 页面里
+- `userscript/mediawiki-vscode-editor.user.js`：Tampermonkey 脚本，运行在 vcpedia.cn 页面里
 - 本 VSCode 扩展：本地 WebSocket 服务（默认 `127.0.0.1:8927`），把页面源码落到临时文件，保存时把内容推回浏览器。
 
 内容方向：
