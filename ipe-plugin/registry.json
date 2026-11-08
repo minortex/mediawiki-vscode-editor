@@ -16,5 +16,14 @@
         "entry": "mediawiki-vscode-ipe.js"
       }
     }
-  ]
+  ],
+  "maintainers": [
+    {
+      "name": "minortex"
+    }
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/minortex/mediawiki-vscode-editor"
+  }
 }
