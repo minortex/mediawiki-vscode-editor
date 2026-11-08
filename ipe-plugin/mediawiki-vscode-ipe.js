@@ -587,6 +587,7 @@
       });
       window.removeEventListener('beforeunload', onBeforeUnload);
       send({ type: 'save-result', sessionId: session.id, ok: true });
+      send({ type: 'finish', sessionId: session.id, result: 'saved', summary: summary || '', minor: !!minor });
       setStatus(session.reload === false ? '已保存' : '已保存，正在刷新…', 'ok');
       setBusy(false);
       if (session.reload !== false) setTimeout(function () { location.reload(); }, 800);
