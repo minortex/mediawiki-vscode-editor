@@ -47,6 +47,8 @@
       '.vcpe-ipe-bar button:hover{background:#eaecf0;}',
       '.vcpe-ipe-bar button.is-primary{background:#3366cc;border-color:#3366cc;color:#fff;font-weight:600;}',
       '.vcpe-ipe-bar button.is-primary:hover{background:#2a56a8;}',
+      '.vcpe-ipe-bar .vcpe-ipe-link{color:#3366cc;font-size:13px;text-decoration:none;cursor:pointer;white-space:nowrap;}',
+      '.vcpe-ipe-bar .vcpe-ipe-link:hover{text-decoration:underline;}',
       '.vcpe-ipe-bar label{display:flex;align-items:center;gap:4px;white-space:nowrap;}',
       'body.vcpe-ipe-editing{padding-bottom:96px;}',
     ].join('\n');
@@ -97,9 +99,9 @@
       '<label><input type="checkbox" class="vcpe-ipe-reload" checked> 保存后刷新</label>' +
       '<button class="vcpe-ipe-submit is-primary">提交</button>' +
       '<button class="vcpe-ipe-diff">差异</button>' +
-      '<button class="vcpe-ipe-upload">快速上传</button>' +
-      '<button class="vcpe-ipe-templates">使用的模板</button>' +
-      '<button class="vcpe-ipe-images">使用的图片</button>' +
+      '<a class="vcpe-ipe-link vcpe-ipe-upload">快速上传</a>' +
+      '<a class="vcpe-ipe-link vcpe-ipe-templates">使用的模板</a>' +
+      '<a class="vcpe-ipe-link vcpe-ipe-images">使用的图片</a>' +
       '<button class="vcpe-ipe-cancel">取消</button>';
     document.body.append(bar);
     document.body.classList.add('vcpe-ipe-editing');
