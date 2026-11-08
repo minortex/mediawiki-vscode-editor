@@ -1,6 +1,6 @@
 // ==UserScript==
-// @name         VCPedia ⇄ VSCode 外部编辑器
-// @namespace    vcpedia-vscode-editor
+// @name         MediaWiki ⇄ VSCode 外部编辑器
+// @namespace    mediawiki-vscode-editor
 // @version      0.3.3
 // @description  在 vcpedia.cn 上发起编辑，用 VSCode 改，保存即预览，浏览器内提交
 // @match        https://vcpedia.cn/*
@@ -12,7 +12,7 @@
 (() => {
   'use strict';
 
-  console.info('[vcpedia-vscode] userscript 0.3.3 loaded');
+  console.info('[mediawiki-vscode] userscript 0.3.3 loaded');
 
   const WS_URL = 'ws://127.0.0.1:8927';
   const RECONNECT_MS = 1000;
@@ -20,7 +20,7 @@
   // localStorage.setItem('vcpe-editor-scheme', 'vscode') 切换
   const EDITOR_SCHEME =
     localStorage.getItem('vcpe-editor-scheme') || 'vscodium';
-  const EDITOR_URI = `${EDITOR_SCHEME}://local.vcpedia-vscode-editor/wake`;
+  const EDITOR_URI = `${EDITOR_SCHEME}://local.mediawiki-vscode-editor/wake`;
 
   // ---------- 与站点 API 交互 ----------
   const scriptPath = (window.mw && mw.config.get('wgScriptPath')) || '';
@@ -254,7 +254,7 @@
       launchEditor();
       setTimeout(() => {
         if (!connected && pendingEdit) {
-          notify('仍未检测到 VSCode 扩展，确认已安装 vcpedia-vscode-editor。', 6000);
+          notify('仍未检测到 VSCode 扩展，确认已安装 mediawiki-vscode-editor。', 6000);
         }
       }, 15000);
       return;

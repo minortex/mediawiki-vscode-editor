@@ -1,10 +1,10 @@
-# VCPedia ⇄ VSCode External Editor
+# MediaWiki ⇄ VSCode External Editor
 
 在浏览器里发起编辑，用 VSCode 改，保存时浏览器实时预览，最后在浏览器里提交。
 
 ## 组成
 
-RTY-MARKER- `userscript/vcpedia-vscode-editor.user.js`：Tampermonkey 脚本，运行在 vDIRTYDIRTYcpedia.cn 页面里
+RTY-MARKER- `userscript/mediawiki-vscode-editor.user.js`：Tampermonkey 脚本，运行在 vDIRTYDIRTYcpedia.cn 页面里
 - 本 VSCode 扩展：本地 WebSocket 服务（默认 `127.0.0.1:8927`），把页面源码落到临时文件，保存时把内容推回浏览器。
 
 内容方向：
@@ -20,7 +20,7 @@ VSCode --保存--> 浏览器（action=parse 渲染预览）
 1. VSCode 扩展：
 
    ```sh
-   codium --install-extension dist/vcpedia-vscode-editor-0.1.0.vsix
+   codium --install-extension dist/mediawiki-vscode-editor-0.1.0.vsix
    # 或 code --install-extension ...
 
    ```
@@ -29,7 +29,7 @@ VSCode --保存--> 浏览器（action=parse 渲染预览）
 
 2. 浏览器端二选一：
 
-   - Tampermonkey：新建脚本，粘贴 `userscript/vcpedia-vscode-editor.user.js` 的内容。更新时打开同一条目，全选删除后粘贴新文件再保存。装好后控制台应出现 `[vcpedia-vscode] userscript 0.3.3 loaded`。
+   - Tampermonkey：新建脚本，粘贴 `userscript/mediawiki-vscode-editor.user.js` 的内容。更新时打开同一条目，全选删除后粘贴新文件再保存。装好后控制台应出现 `[mediawiki-vscode] userscript 0.3.3 loaded`。
    - 或直接放进个人 JS：打开 `https://vcpedia.cn/User:<你的用户名>/common.js`（红链就创建），粘贴同一份内容并保存，然后 `?action=purge` 或 Ctrl+F5 刷新。个人 JS 只在你登录时加载，效果与 Tampermonkey 相同。
 
    不要放进 `MediaWiki:Common.js`：那需要 `editinterface` 权限，且会让所有访客都去连本机端口。
@@ -40,7 +40,7 @@ VSCode --保存--> 浏览器（action=parse 渲染预览）
 
 - 整页编辑：点右下角按钮，或按 `Alt+E`。
 - 章节编辑：点该节 `[编辑]` 后面的 `VSCode`。
-- VSCode 打开临时文件（默认 `$XDG_CACHE_HOME/vcpedia-edit/<页面名>[.s<节号>].<时间戳>.wiki`，即 `~/.cache/vcpedia-edit`），改完 `Ctrl+S`。
+- VSCode 打开临时文件（默认 `$XDG_CACHE_HOME/mediawiki-edit/<页面名>[.s<节号>].<时间戳>.wiki`，即 `~/.cache/mediawiki-edit`），改完 `Ctrl+S`。
 - 浏览器正文即时变成预览，底部浮条可填编辑摘要、标记小编辑。
 - 点「保存更改」提交；「取消」恢复原页面并丢弃本次会话。
 - 提交冲突（别人先改了）时会提示，取消后重新发起编辑。
@@ -56,13 +56,13 @@ VSCode --保存--> 浏览器（action=parse 渲染预览）
 
 VSCode 设置：
 
-- `vcpediaEditor.port`：本地 WebSocket 端口，默认 `8927`。
-- `vcpediaEditor.tempDir`：源码落盘目录，默认用户缓存目录 `$XDG_CACHE_HOME/vcpedia-edit`（macOS 为 `~/Library/Caches/vcpedia-edit`，Windows 为 `%LOCALAPPDATA%\vcpedia-edit`）。断电或重启后文件仍在；需要更持久的归档可改到 `~/.local/share`。
-- `vcpediaEditor.allowedOrigin`：允许连接的用户脚本来源，默认 `https://vcpedia.cn`。
+- `mediawikiEditor.port`：本地 WebSocket 端口，默认 `8927`。
+- `mediawikiEditor.tempDir`：源码落盘目录，默认用户缓存目录 `$XDG_CACHE_HOME/mediawiki-edit`（macOS 为 `~/Library/Caches/mediawiki-edit`，Windows 为 `%LOCALAPPDATA%\mediawiki-edit`）。断电或重启后文件仍在；需要更持久的归档可改到 `~/.local/share`。
+- `mediawikiEditor.allowedOrigin`：允许连接的用户脚本来源，默认 `https://vcpedia.cn`。
 
 修改端口时同步改用户脚本顶部的 `WS_URL`。
 
-编辑器唤起协议默认 `vscodium://`。如果用的是 VS Code，在 vcpedia 页面的控制台执行一次：
+编辑器唤起协议默认 `vscodium://`。如果用的是 VS Code，在 mediawiki 页面的控制台执行一次：
 
 ```js
 localStorage.setItem('vcpe-editor-scheme', 'vscode')
@@ -97,7 +97,7 @@ https://cdn.jsdelivr.net/gh/minortex/mediawiki-vscode-editor@latest/ipe-plugin/r
 - 在个人 JS 里加载（InPageEdit 之后），或控制台注入文件内容；
 - 点 IPE 的编辑入口 → 关闭 IPE 弹窗 → 在 VSCode 里打开源码；
 - VSCode 内容变化 → 插件调用 `action=parse` 替换正文，保留页面内预览和光标定位；
-- VSCode 里执行 `VCPedia: 通过 InPageEdit 保存当前文件` → 插件调用 `wikiPage.edit()`，复用 IPE 的 token、`basetimestamp`、冲突处理和 watchlist。
+- VSCode 里执行 `MediaWiki: 通过 InPageEdit 保存当前文件` → 插件调用 `wikiPage.edit()`，复用 IPE 的 token、`basetimestamp`、冲突处理和 watchlist。
 
 限制：章节编辑暂时只有预览提示；页面标签栏的原生“编辑”链接不经过 IPE；保存结果在页面状态条显示。
 

@@ -505,12 +505,13 @@
         } else {
           var ol = document.createElement('ol');
           images.forEach(function (t) {
+            var name = /^File:/i.test(t) ? t : 'File:' + t;
             var li = document.createElement('li');
             var a = document.createElement('a');
-            a.href = '/wiki/' + encodeURIComponent(t);
+            a.href = '/wiki/' + encodeURIComponent(name);
             a.target = '_blank';
             a.rel = 'noopener';
-            a.textContent = t;
+            a.textContent = name;
             li.appendChild(a);
             ol.appendChild(li);
           });

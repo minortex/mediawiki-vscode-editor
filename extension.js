@@ -19,7 +19,7 @@ const syncTimers = new Map(); // sessionId -> timeout
 const DELETE_RESULTS = new Set(['saved', 'unchanged', 'discarded']);
 
 function config() {
-  return vscode.workspace.getConfiguration('vcpediaEditor');
+  return vscode.workspace.getConfiguration('mediawikiEditor');
 }
 
 function safeName(title) {
@@ -30,14 +30,14 @@ function defaultDir() {
   if (process.platform === 'win32') {
     const base =
       process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
-    return path.join(base, 'vcpedia-edit');
+    return path.join(base, 'mediawiki-edit');
   }
   if (process.platform === 'darwin') {
-    return path.join(os.homedir(), 'Library', 'Caches', 'vcpedia-edit');
+    return path.join(os.homedir(), 'Library', 'Caches', 'mediawiki-edit');
   }
   const base =
     process.env.XDG_CACHE_HOME || path.join(os.homedir(), '.cache');
-  return path.join(base, 'vcpedia-edit');
+  return path.join(base, 'mediawiki-edit');
 }
 
 function stamp(date = new Date()) {
@@ -54,8 +54,8 @@ function updateStatus() {
     ? [...wss.clients].filter((c) => c.readyState === 1).length
     : 0;
   statusBar.text = connected
-    ? '$(vm-active) VCPedia: 已连接'
-    : '$(vm-outline) VCPedia: 等待浏览器';
+    ? '$(vm-active) MediaWiki: 已连接'
+    : '$(vm-outline) MediaWiki: 等待浏览器';
   statusBar.tooltip = '点击查看连接状态';
   statusBar.show();
 }
@@ -69,7 +69,7 @@ function push(doc) {
     text: doc.getText(),
   });
   if (count > 0) {
-    vscode.window.setStatusBarMessage('VCPedia: 已把保存内容推送到浏览器预览', 5000);
+    vscode.window.setStatusBarMessage('MediaWiki: 已把保存内容推送到浏览器预览', 5000);
   }
   return count > 0;
 }
@@ -248,7 +248,7 @@ function revealLine(editor, line) {
   suppressScrollUntil = Date.now() + 700;
   editor.selection = new vscode.Selection(pos, pos);
   editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
-  vscode.window.setStatusBarMessage(`VCPedia: 定位到第 ${line + 1} 行`, 2000);
+  vscode.window.setStatusBarMessage(`MediaWiki: 定位到第 ${line + 1} 行`, 2000);
 }
 
 async function locateInEditor(msg) {
@@ -277,7 +277,7 @@ async function handleRequestSave(msg) {
     minor: msg.minor,
   });
   if (!count) {
-    vscode.window.showWarningMessage('VCPedia: 浏览器未连接，无法提交。');
+    vscode.window.showWarningMessage('MediaWiki: 浏览器未连接，无法提交。');
   }
 }
 
@@ -302,7 +302,7 @@ async function openSession(msg, ws) {
 
   const label = msg.section != null ? `${msg.title} § ${msg.section}` : msg.title;
   vscode.window.setStatusBarMessage(
-    `VCPedia: 正在编辑 ${label}，保存文件即刷新浏览器预览`,
+    `MediaWiki: 正在编辑 ${label}，保存文件即刷新浏览器预览`,
     8000
   );
 }
@@ -319,14 +319,14 @@ async function finishSession(msg) {
   if (!DELETE_RESULTS.has(msg.result)) {
     // closed / 断线 / 未知状态：保留编辑器与文件，绝不自动删除
     vscode.window.showWarningMessage(
-      `VCPedia: 编辑会话已断开，临时文件保留：${meta.fsPath}`
+      `MediaWiki: 编辑会话已断开，临时文件保留：${meta.fsPath}`
     );
     return;
   }
 
   await closeAndDelete(meta.fsPath);
   vscode.window.setStatusBarMessage(
-    msg.result === 'saved' ? 'VCPedia: 已在浏览器提交保存' : 'VCPedia: 编辑会话已结束',
+    msg.result === 'saved' ? 'MediaWiki: 已在浏览器提交保存' : 'MediaWiki: 编辑会话已结束',
     5000
   );
 }
@@ -356,7 +356,7 @@ function saveInPage(sessionId, text, summary, minor) {
 function handleMessage(msg, ws) {
   if (msg.type === 'open') {
     openSession(msg, ws).catch((err) =>
-      vscode.window.showErrorMessage(`VCPedia: ${err.message}`)
+      vscode.window.showErrorMessage(`MediaWiki: ${err.message}`)
     );
   } else if (msg.type === 'finish') {
     finishSession(msg).catch(() => {});
@@ -364,7 +364,7 @@ function handleMessage(msg, ws) {
     locateInEditor(msg).catch(() => {});
   } else if (msg.type === 'request-save') {
     handleRequestSave(msg).catch((err) =>
-      vscode.window.showErrorMessage(`VCPedia: ${err.message}`)
+      vscode.window.showErrorMessage(`MediaWiki: ${err.message}`)
     );
   } else if (msg.type === 'save-result') {
     const waiter = saveWaiters.get(msg.sessionId);
@@ -378,7 +378,7 @@ function handleMessage(msg, ws) {
 
 function activate(context) {
   statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-  statusBar.command = 'vcpediaEditor.status';
+  statusBar.command = 'mediawikiEditor.status';
   updateStatus();
 
   const port = config().get('port');
@@ -402,39 +402,39 @@ function activate(context) {
     },
     onError: (err) => {
       vscode.window.showErrorMessage(
-        `VCPedia: 本地服务启动失败（端口 ${port}）：${err.message}`
+        `MediaWiki: 本地服务启动失败（端口 ${port}）：${err.message}`
       );
     },
   });
 
   context.subscriptions.push(
     statusBar,
-    vscode.commands.registerCommand('vcpediaEditor.push', () => {
+    vscode.commands.registerCommand('mediawikiEditor.push', () => {
       const editor = vscode.window.activeTextEditor;
       if (!editor) {
-        vscode.window.showInformationMessage('VCPedia: 当前没有打开的文件。');
+        vscode.window.showInformationMessage('MediaWiki: 当前没有打开的文件。');
         return;
       }
       if (!push(editor.document)) {
         vscode.window.showInformationMessage(
-          'VCPedia: 当前文件不是编辑会话，或浏览器未连接。'
+          'MediaWiki: 当前文件不是编辑会话，或浏览器未连接。'
         );
       }
     }),
     vscode.window.registerUriHandler({
       handleUri() {
-        vscode.window.setStatusBarMessage('VCPedia: 已就绪，等待浏览器连接…', 5000);
+        vscode.window.setStatusBarMessage('MediaWiki: 已就绪，等待浏览器连接…', 5000);
       },
     }),
-    vscode.commands.registerCommand('vcpediaEditor.save', async () => {
+    vscode.commands.registerCommand('mediawikiEditor.save', async () => {
       const editor = vscode.window.activeTextEditor;
       if (!editor) {
-        vscode.window.showInformationMessage('VCPedia: 当前没有打开的文件。');
+        vscode.window.showInformationMessage('MediaWiki: 当前没有打开的文件。');
         return;
       }
       const sessionId = byPath.get(editor.document.uri.fsPath);
       if (!sessionId) {
-        vscode.window.showInformationMessage('VCPedia: 当前文件不是编辑会话。');
+        vscode.window.showInformationMessage('MediaWiki: 当前文件不是编辑会话。');
         return;
       }
       const summary = await vscode.window.showInputBox({
@@ -445,17 +445,17 @@ function activate(context) {
       const result = await saveInPage(sessionId, editor.document.getText(), summary, false);
       if (result.ok) {
         await finishSession({ sessionId, result: 'saved' });
-        vscode.window.showInformationMessage('VCPedia: 已通过 InPageEdit 保存。');
+        vscode.window.showInformationMessage('MediaWiki: 已通过 InPageEdit 保存。');
       } else {
-        vscode.window.showErrorMessage(`VCPedia: 保存失败：${result.error}`);
+        vscode.window.showErrorMessage(`MediaWiki: 保存失败：${result.error}`);
       }
     }),
-    vscode.commands.registerCommand('vcpediaEditor.status', () => {
+    vscode.commands.registerCommand('mediawikiEditor.status', () => {
       const connected = wss
         ? [...wss.clients].filter((c) => c.readyState === 1).length
         : 0;
       vscode.window.showInformationMessage(
-        `VCPedia: 端口 ${config().get('port')}，${connected} 个浏览器连接，` +
+        `MediaWiki: 端口 ${config().get('port')}，${connected} 个浏览器连接，` +
           `${sessions.size} 个活动编辑会话。`
       );
     }),

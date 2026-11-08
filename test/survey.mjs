@@ -8,7 +8,7 @@ const { WebSocketServer } = require('ws');
 const toSimp = OpenCC.Converter({ from: 'tw', to: 'cn' });
 
 const SCRIPT = fs.readFileSync(
-  new URL('../userscript/vcpedia-vscode-editor.user.js', import.meta.url),
+  new URL('../userscript/mediawiki-vscode-editor.user.js', import.meta.url),
   'utf8'
 );
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -95,7 +95,7 @@ for (const cat of ['软件', '活动', '2024年音乐专辑', 'Synthesizer V']) 
 }
 const PAGES = [];
 for (const t of candidates) {
-  if (t.startsWith('VCPedia:') || await canParse(t)) PAGES.push(t);
+  if (t.startsWith('MediaWiki:') || await canParse(t)) PAGES.push(t);
   if (PAGES.length >= 9) break;
 }
 console.log('pages:', PAGES);

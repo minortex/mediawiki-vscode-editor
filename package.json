@@ -1,6 +1,6 @@
 {
-  "name": "vcpedia-vscode-editor",
-  "displayName": "VCPedia ⇄ VSCode External Editor",
+  "name": "mediawiki-vscode-editor",
+  "displayName": "MediaWiki ⇄ VSCode External Editor",
   "description": "Edit vcpedia.cn pages in VSCode; the browser previews on save and performs the edit",
   "version": "0.1.0",
   "publisher": "local",
@@ -19,32 +19,32 @@
   "contributes": {
     "commands": [
       {
-        "command": "vcpediaEditor.push",
-        "title": "VCPedia: 立即推送当前文件预览"
+        "command": "mediawikiEditor.push",
+        "title": "MediaWiki: 立即推送当前文件预览"
       },
       {
-        "command": "vcpediaEditor.status",
-        "title": "VCPedia: 显示连接状态"
+        "command": "mediawikiEditor.status",
+        "title": "MediaWiki: 显示连接状态"
       },
       {
-        "command": "vcpediaEditor.save",
-        "title": "VCPedia: 通过 InPageEdit 保存当前文件"
+        "command": "mediawikiEditor.save",
+        "title": "MediaWiki: 通过 InPageEdit 保存当前文件"
       }
     ],
     "configuration": {
-      "title": "VCPedia External Editor",
+      "title": "MediaWiki External Editor",
       "properties": {
-        "vcpediaEditor.port": {
+        "mediawikiEditor.port": {
           "type": "number",
           "default": 8927,
           "description": "本地 WebSocket 端口，需与用户脚本中的 WS_URL 一致。"
         },
-        "vcpediaEditor.tempDir": {
+        "mediawikiEditor.tempDir": {
           "type": "string",
           "default": "",
-          "description": "源码落盘目录。留空则使用用户缓存目录：$XDG_CACHE_HOME/vcpedia-edit（Linux）、~/Library/Caches/vcpedia-edit（macOS）、%LOCALAPPDATA%\\vcpedia-edit（Windows）。"
+          "description": "源码落盘目录。留空则使用用户缓存目录：$XDG_CACHE_HOME/mediawiki-edit（Linux）、~/Library/Caches/mediawiki-edit（macOS）、%LOCALAPPDATA%\\mediawiki-edit（Windows）。"
         },
-        "vcpediaEditor.allowedOrigin": {
+        "mediawikiEditor.allowedOrigin": {
           "type": "string",
           "default": "https://vcpedia.cn",
           "description": "允许连接的用户脚本来源，防止其它网页复用该端口。"
