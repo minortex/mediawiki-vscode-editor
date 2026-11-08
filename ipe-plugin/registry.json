@@ -13,7 +13,7 @@
       "license": "MIT",
       "loader": {
         "kind": "autoload",
-        "entry": "mediawiki-vscode-ipe.js"
+        "entry": "mediawiki-vscode-ipe.js?v=50dc94c"
       }
     }
   ],
