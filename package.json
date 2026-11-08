@@ -1,7 +1,7 @@
 {
   "name": "mediawiki-vscode-editor",
   "displayName": "MediaWiki ⇄ VSCode External Editor",
-  "description": "Edit vcpedia.cn pages in VSCode; the browser previews on save and performs the edit",
+  "description": "Edit MediaWiki pages in VSCode; the browser previews on save and performs the edit",
   "version": "0.1.0",
   "publisher": "local",
   "license": "MIT",
@@ -46,8 +46,8 @@
         },
         "mediawikiEditor.allowedOrigin": {
           "type": "string",
-          "default": "https://vcpedia.cn",
-          "description": "允许连接的用户脚本来源，防止其它网页复用该端口。"
+          "default": "*",
+          "description": "允许连接的浏览器来源；`*` 表示不限制，也可填单个 origin（如 https://example.org）。"
         }
       }
     }

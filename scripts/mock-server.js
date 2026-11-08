@@ -11,7 +11,7 @@ const port = Number(process.env.MOCK_PORT || 8927);
 
 const wss = startWsServer({
   port,
-  allowedOrigin: 'https://vcpedia.cn',
+  allowedOrigin: '*',
   onConnection: () => console.log('[mock] browser connected'),
   onError: (err) => {
     console.error('[mock] error:', err.message);

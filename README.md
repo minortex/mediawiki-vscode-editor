@@ -58,7 +58,7 @@ VSCode 设置：
 
 - `mediawikiEditor.port`：本地 WebSocket 端口，默认 `8927`。
 - `mediawikiEditor.tempDir`：源码落盘目录，默认用户缓存目录 `$XDG_CACHE_HOME/mediawiki-edit`（macOS 为 `~/Library/Caches/mediawiki-edit`，Windows 为 `%LOCALAPPDATA%\mediawiki-edit`）。断电或重启后文件仍在；需要更持久的归档可改到 `~/.local/share`。
-- `mediawikiEditor.allowedOrigin`：允许连接的用户脚本来源，默认 `https://vcpedia.cn`。
+- `mediawikiEditor.allowedOrigin`：允许连接的浏览器来源，默认 `*`（不限制）；填单个 origin 可限制。
 
 修改端口时同步改用户脚本顶部的 `WS_URL`。
 
