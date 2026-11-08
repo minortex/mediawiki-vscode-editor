@@ -313,6 +313,28 @@ async function finishSession(msg) {
   );
 }
 
+const saveWaiters = new Map();
+
+function saveInPage(sessionId, text, summary, minor) {
+  return new Promise((resolve) => {
+    if (!sessions.has(sessionId) || !wss) {
+      resolve({ ok: false, error: '编辑会话不存在' });
+      return;
+    }
+    const timer = setTimeout(() => {
+      saveWaiters.delete(sessionId);
+      resolve({ ok: false, error: '页面未响应保存请求' });
+    }, 15000);
+    saveWaiters.set(sessionId, { resolve, timer });
+    const count = broadcast(wss, { type: 'save', sessionId, text, summary, minor });
+    if (!count) {
+      clearTimeout(timer);
+      saveWaiters.delete(sessionId);
+      resolve({ ok: false, error: '浏览器未连接' });
+    }
+  });
+}
+
 function handleMessage(msg, ws) {
   if (msg.type === 'open') {
     openSession(msg, ws).catch((err) =>
@@ -322,6 +344,13 @@ function handleMessage(msg, ws) {
     finishSession(msg).catch(() => {});
   } else if (msg.type === 'locate') {
     locateInEditor(msg).catch(() => {});
+  } else if (msg.type === 'save-result') {
+    const waiter = saveWaiters.get(msg.sessionId);
+    if (waiter) {
+      clearTimeout(waiter.timer);
+      saveWaiters.delete(msg.sessionId);
+      waiter.resolve({ ok: !!msg.ok, error: msg.error });
+    }
   }
 }
 
@@ -374,6 +403,30 @@ function activate(context) {
       handleUri() {
         vscode.window.setStatusBarMessage('VCPedia: 已就绪，等待浏览器连接…', 5000);
       },
+    }),
+    vscode.commands.registerCommand('vcpediaEditor.save', async () => {
+      const editor = vscode.window.activeTextEditor;
+      if (!editor) {
+        vscode.window.showInformationMessage('VCPedia: 当前没有打开的文件。');
+        return;
+      }
+      const sessionId = byPath.get(editor.document.uri.fsPath);
+      if (!sessionId) {
+        vscode.window.showInformationMessage('VCPedia: 当前文件不是编辑会话。');
+        return;
+      }
+      const summary = await vscode.window.showInputBox({
+        prompt: '编辑摘要',
+        value: '[VSCode]',
+      });
+      if (summary === undefined) return;
+      const result = await saveInPage(sessionId, editor.document.getText(), summary, false);
+      if (result.ok) {
+        await finishSession({ sessionId, result: 'saved' });
+        vscode.window.showInformationMessage('VCPedia: 已通过 InPageEdit 保存。');
+      } else {
+        vscode.window.showErrorMessage(`VCPedia: 保存失败：${result.error}`);
+      }
     }),
     vscode.commands.registerCommand('vcpediaEditor.status', () => {
       const connected = wss

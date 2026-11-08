@@ -80,6 +80,17 @@ localStorage.setItem('vcpe-editor-scheme', 'vscode')
 - **匹配不到就不动**：不回退到模板区域或章节比例，保持上一次的视口位置。
 - 点击预览正文（非链接）时，取点击处的文本发给 VSCode，按该文本定位源码行。
 
+## InPageEdit 插件（初版）
+
+`ipe-plugin/vcpedia-vscode-ipe.js` 是 InPageEdit NEXT 插件版本，用来替代自写的前端入口：
+
+- 在个人 JS 里加载（InPageEdit 之后），或控制台注入文件内容；
+- 点 IPE 的编辑入口 → 关闭 IPE 弹窗 → 在 VSCode 里打开源码；
+- VSCode 内容变化 → 插件调用 `action=parse` 替换正文，保留页面内预览和光标定位；
+- VSCode 里执行 `VCPedia: 通过 InPageEdit 保存当前文件` → 插件调用 `wikiPage.edit()`，复用 IPE 的 token、`basetimestamp`、冲突处理和 watchlist。
+
+限制：章节编辑暂时只有预览提示；页面标签栏的原生“编辑”链接不经过 IPE；保存结果在页面状态条显示。
+
 ## 测试
 
 `test/survey.mjs` 会从 wiki 随机抽取不同类型的页面（条目、模板、项目页、模块、分类、分类成员），对每页取 2 个 AST 文本项，验证定位和高亮。

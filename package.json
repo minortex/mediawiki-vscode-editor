@@ -25,6 +25,10 @@
       {
         "command": "vcpediaEditor.status",
         "title": "VCPedia: 显示连接状态"
+      },
+      {
+        "command": "vcpediaEditor.save",
+        "title": "VCPedia: 通过 InPageEdit 保存当前文件"
       }
     ],
     "configuration": {
