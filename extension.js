@@ -263,6 +263,24 @@ async function locateInEditor(msg) {
   revealLine(editor, line);
 }
 
+async function handleRequestSave(msg) {
+  const meta = sessions.get(msg.sessionId);
+  if (!meta) return;
+  const doc = vscode.workspace.textDocuments.find((d) => d.uri.fsPath === meta.fsPath);
+  if (!doc) return;
+  if (doc.isDirty) await doc.save();
+  const count = broadcast(wss, {
+    type: 'save',
+    sessionId: msg.sessionId,
+    text: doc.getText(),
+    summary: msg.summary,
+    minor: msg.minor,
+  });
+  if (!count) {
+    vscode.window.showWarningMessage('VCPedia: 浏览器未连接，无法提交。');
+  }
+}
+
 async function openSession(msg, ws) {
   const dir = config().get('tempDir') || defaultDir();
   await fs.promises.mkdir(dir, { recursive: true });
@@ -344,6 +362,10 @@ function handleMessage(msg, ws) {
     finishSession(msg).catch(() => {});
   } else if (msg.type === 'locate') {
     locateInEditor(msg).catch(() => {});
+  } else if (msg.type === 'request-save') {
+    handleRequestSave(msg).catch((err) =>
+      vscode.window.showErrorMessage(`VCPedia: ${err.message}`)
+    );
   } else if (msg.type === 'save-result') {
     const waiter = saveWaiters.get(msg.sessionId);
     if (waiter) {

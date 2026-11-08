@@ -15,24 +15,59 @@
   var previewTimer = null;
   var previewSeq = 0;
 
-  // ---------- status ----------
+  // ---------- bottom bar ----------
+  var barStyleId = 'vcpe-ipe-bar-style';
+
+  function ensureBarStyle() {
+    if (document.getElementById(barStyleId)) return;
+    var style = document.createElement('style');
+    style.id = barStyleId;
+    style.textContent = [
+      '.vcpe-ipe-bar{position:fixed;left:0;right:0;bottom:0;z-index:2147483000;display:flex;align-items:center;gap:12px;padding:10px 16px;background:#fff;border-top:1px solid #c8ccd1;box-shadow:0 -2px 10px rgba(0,0,0,.12);font-size:14px;color:#202122;}',
+      '.vcpe-ipe-bar .vcpe-ipe-status{margin-right:auto;color:#54595d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:42%;}',
+      '.vcpe-ipe-bar .vcpe-ipe-status.error{color:#d33;}',
+      '.vcpe-ipe-bar .vcpe-ipe-status.ok{color:#14866d;}',
+      '.vcpe-ipe-bar input[type=text]{width:220px;padding:6px 8px;border:1px solid #a2a9b1;border-radius:2px;font-size:14px;}',
+      '.vcpe-ipe-bar button{padding:6px 14px;border:1px solid #a2a9b1;border-radius:2px;background:#f8f9fa;cursor:pointer;font-size:14px;color:#202122;}',
+      '.vcpe-ipe-bar button:hover{background:#eaecf0;}',
+      '.vcpe-ipe-bar button.is-primary{background:#36c;border-color:#36c;color:#fff;}',
+      '.vcpe-ipe-bar button.is-primary:hover{background:#2a56a8;}',
+    ].join('\n');
+    document.head.append(style);
+  }
+
+  function setStatus(text, kind) {
+    var el = document.querySelector('.vcpe-ipe-status');
+    if (!el) return;
+    el.textContent = text || '';
+    el.className = 'vcpe-ipe-status' + (kind ? ' ' + kind : '');
+  }
+
+  function ensureBar() {
+    ensureBarStyle();
+    var bar = document.querySelector('.vcpe-ipe-bar');
+    if (bar) return bar;
+    bar = document.createElement('div');
+    bar.className = 'vcpe-ipe-bar';
+    bar.innerHTML =
+      '<span class="vcpe-ipe-status">VSCode 编辑中</span>' +
+      '<input type="text" class="vcpe-ipe-summary" placeholder="编辑摘要">' +
+      '<label><input type="checkbox" class="vcpe-ipe-minor"> 小编辑</label>' +
+      '<button class="vcpe-ipe-submit is-primary">提交</button>' +
+      '<button class="vcpe-ipe-cancel">取消</button>';
+    document.body.append(bar);
+    bar.querySelector('.vcpe-ipe-submit').addEventListener('click', function () {
+      requestSave(bar);
+    });
+    bar.querySelector('.vcpe-ipe-cancel').addEventListener('click', function () {
+      restorePage();
+      endSession();
+    });
+    return bar;
+  }
+
   function status(text) {
-    var el = document.getElementById('vcpe-ipe-status');
-    if (!el) {
-      el = document.createElement('div');
-      el.id = 'vcpe-ipe-status';
-      el.style.cssText =
-        'position:fixed;right:16px;bottom:16px;z-index:2147483003;max-width:360px;' +
-        'background:#202122;color:#fff;padding:8px 12px;border-radius:6px;' +
-        'font-size:13px;box-shadow:0 2px 10px rgba(0,0,0,.35);display:none;';
-      document.body.append(el);
-    }
-    if (text) {
-      el.textContent = text;
-      el.style.display = 'block';
-    } else {
-      el.style.display = 'none';
-    }
+    setStatus(text);
   }
 
   // ---------- api ----------
@@ -61,10 +96,12 @@
       if (!session || msg.sessionId !== session.id) return;
       if (msg.type === 'update') {
         session.text = msg.text;
+        setStatus('预览已更新');
         schedulePreview();
       } else if (msg.type === 'scroll') {
         scrollToOccurrence(msg.text, msg.occurrence, msg.scope, msg.label, msg.prev, msg.next, msg.labelOccurrence);
       } else if (msg.type === 'save') {
+        setStatus('正在提交…');
         saveEdit(msg.text, msg.summary, msg.minor);
       } else if (msg.type === 'finish') {
         endSession();
@@ -256,6 +293,9 @@
   function applyFull(html) {
     var root = document.querySelector('#mw-content-text');
     if (!root) return;
+    if (session && !session.fullOriginal) {
+      session.fullOriginal = Array.prototype.slice.call(root.childNodes);
+    }
     var temp = document.createElement('div');
     temp.innerHTML = html;
     root.replaceChildren.apply(root, temp.childNodes);
@@ -273,7 +313,7 @@
   async function renderPreview() {
     if (!session) return;
     if (session.section != null) {
-      status('VSCode 编辑中（章节预览暂不支持）');
+      setStatus('VSCode 编辑中（章节预览暂不支持）');
       return;
     }
     var seq = ++previewSeq;
@@ -297,14 +337,23 @@
     }
     if (seq !== previewSeq || !data.parse) return;
     applyFull(data.parse.text);
-    status('预览已更新');
+    setStatus('预览已更新');
   }
 
   // ---------- edit session ----------
+  function restorePage() {
+    var root = document.querySelector('#mw-content-text');
+    if (root && session && session.fullOriginal) {
+      root.replaceChildren.apply(root, session.fullOriginal);
+      session.fullOriginal = null;
+    }
+  }
+
   function endSession() {
     session = null;
     clearTimeout(previewTimer);
-    status('');
+    var bar = document.querySelector('.vcpe-ipe-bar');
+    if (bar) bar.remove();
   }
 
   async function startEdit(payload) {
@@ -316,7 +365,6 @@
       status('VSCode 扩展未连接（端口 8927）');
       return;
     }
-    try { modal.close(); } catch (e) {}
     var rev = wikiPage.revisions && wikiPage.revisions[0];
     session = {
       id: 's' + Date.now(),
@@ -325,7 +373,8 @@
       text: (rev && rev.content) || '',
       wikiPage: wikiPage,
     };
-    status('已在 VSCode 中打开');
+    showBar(modal);
+    setStatus('VSCode 编辑中，保存文件即刷新预览');
     send({
       type: 'open',
       sessionId: session.id,
@@ -335,6 +384,24 @@
       revid: rev && rev.revid,
       basetimestamp: rev && rev.timestamp,
       starttimestamp: new Date().toISOString(),
+    });
+  }
+
+  function showBar(modal) {
+    try { modal.close(); } catch (e) {}
+    ensureBar();
+  }
+
+  function requestSave(bar) {
+    if (!session) return;
+    var summaryInput = bar.querySelector('.vcpe-ipe-summary');
+    var minorInput = bar.querySelector('.vcpe-ipe-minor');
+    setStatus('正在保存文件…');
+    send({
+      type: 'request-save',
+      sessionId: session.id,
+      summary: summaryInput ? summaryInput.value : '',
+      minor: !!(minorInput && minorInput.checked),
     });
   }
 
@@ -349,12 +416,12 @@
         watchlist: 'nochange',
       });
       send({ type: 'save-result', sessionId: session.id, ok: true });
-      status('已保存，正在刷新…');
+      setStatus('已保存，正在刷新…', 'ok');
       setTimeout(function () { location.reload(); }, 800);
     } catch (e) {
       var message = (e && e.message) || String(e);
       send({ type: 'save-result', sessionId: session.id, ok: false, error: message });
-      status('保存失败：' + message);
+      setStatus('保存失败：' + message, 'error');
     }
   }
 
