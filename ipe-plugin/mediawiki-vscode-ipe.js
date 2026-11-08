@@ -97,6 +97,9 @@
       '<label><input type="checkbox" class="vcpe-ipe-reload" checked> 保存后刷新</label>' +
       '<button class="vcpe-ipe-submit is-primary">提交</button>' +
       '<button class="vcpe-ipe-diff">差异</button>' +
+      '<button class="vcpe-ipe-upload">快速上传</button>' +
+      '<button class="vcpe-ipe-templates">使用的模板</button>' +
+      '<button class="vcpe-ipe-images">使用的图片</button>' +
       '<button class="vcpe-ipe-cancel">取消</button>';
     document.body.append(bar);
     document.body.classList.add('vcpe-ipe-editing');
@@ -105,6 +108,18 @@
     });
     bar.querySelector('.vcpe-ipe-cancel').addEventListener('click', function () {
       cancelEdit();
+    });
+    bar.querySelector('.vcpe-ipe-upload').addEventListener('click', function () {
+      var qu = window.ipe && window.ipe.get && window.ipe.get('quickUpload');
+      if (qu && qu.showModal) qu.showModal();
+    });
+    bar.querySelector('.vcpe-ipe-templates').addEventListener('click', function () {
+      if (!session) return;
+      var tu = window.ipe && window.ipe.get && window.ipe.get('templatesUsed');
+      if (tu && tu.showModal) tu.showModal({ title: session.title });
+    });
+    bar.querySelector('.vcpe-ipe-images').addEventListener('click', function () {
+      showImagesUsed();
     });
     bar.querySelector('.vcpe-ipe-diff').addEventListener('click', function () {
       if (!session) return;
@@ -316,6 +331,18 @@
     return false;
   }
 
+  function isArticleLink(a) {
+    if (a.closest('.mw-editsection')) return false;
+    if (a.classList.contains('new') || a.classList.contains('external')) return false;
+    var url = new URL(a.href, location.href);
+    if (url.origin !== location.origin) return false;
+    var q = url.searchParams;
+    if (q.get('action') || q.get('oldid') || q.get('diff') || q.get('redlink')) return false;
+    if (url.pathname.indexOf('/Special:') >= 0 || url.pathname.indexOf('特殊:') >= 0) return false;
+    if (url.pathname === location.pathname && url.hash) return false;
+    return true;
+  }
+
   function textAtPoint(x, y) {
     var range = null;
     if (document.caretRangeFromPoint) range = document.caretRangeFromPoint(x, y);
@@ -462,6 +489,41 @@
     });
   }
 
+  function showImagesUsed() {
+    if (!session) return;
+    var modalSvc = window.ipe && window.ipe.get && window.ipe.get('modal');
+    if (!modalSvc) return;
+    fetch('/api.php?action=parse&format=json&formatversion=2&prop=images&page=' + encodeURIComponent(session.title))
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var images = (d.parse && d.parse.images) || [];
+        var box = document.createElement('div');
+        if (!images.length) {
+          box.textContent = '没有使用的图片。';
+        } else {
+          var ol = document.createElement('ol');
+          images.forEach(function (t) {
+            var li = document.createElement('li');
+            var a = document.createElement('a');
+            a.href = '/wiki/' + encodeURIComponent(t);
+            a.target = '_blank';
+            a.rel = 'noopener';
+            a.textContent = t;
+            li.appendChild(a);
+            ol.appendChild(li);
+          });
+          box.appendChild(ol);
+        }
+        modalSvc.show({
+          title: '使用的图片',
+          content: box,
+          sizeClass: 'dialog',
+          draggable: true,
+          backdrop: false,
+        });
+      });
+  }
+
   function cancelEdit() {
     if (!session) return;
     var pending = session.remoteDirty || session.changed;
@@ -536,8 +598,14 @@
   // ---------- click -> locate ----------
   document.addEventListener('click', function (e) {
     if (!session) return;
-    if (e.target.closest && e.target.closest('a')) return;
     if (e.target.closest && !e.target.closest('#mw-content-text')) return;
+    var a = e.target.closest && e.target.closest('a');
+    if (a) {
+      if (!isArticleLink(a)) return;
+      e.preventDefault();
+      window.open(a.href, '_blank', 'noopener');
+      return;
+    }
     var text = textAtPoint(e.clientX, e.clientY);
     if (text) send({ type: 'locate', sessionId: session.id, text: text });
   }, true);
