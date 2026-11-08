@@ -1,0 +1,20 @@
+{
+  "manifest_version": 1,
+  "name": "MediaWiki VSCode Editor",
+  "homepage": "https://github.com/minortex/mediawiki-vscode-editor",
+  "base_url": "https://cdn.jsdelivr.net/gh/minortex/mediawiki-vscode-editor@main/ipe-plugin/",
+  "packages": [
+    {
+      "id": "mediawiki-vscode-ipe",
+      "name": "MediaWiki VSCode Editor",
+      "version": "0.1.0",
+      "description": "Edit MediaWiki pages in VSCode with live preview and InPageEdit save.",
+      "author": "minortex",
+      "license": "MIT",
+      "loader": {
+        "kind": "autoload",
+        "entry": "mediawiki-vscode-ipe.js"
+      }
+    }
+  ]
+}

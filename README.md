@@ -80,9 +80,19 @@ localStorage.setItem('vcpe-editor-scheme', 'vscode')
 - **匹配不到就不动**：不回退到模板区域或章节比例，保持上一次的视口位置。
 - 点击预览正文（非链接）时，取点击处的文本发给 VSCode，按该文本定位源码行。
 
+## 通过 IPE 插件商店安装
+
+在 InPageEdit 设置 → 插件商店里添加注册表：
+
+```
+https://cdn.jsdelivr.net/gh/minortex/mediawiki-vscode-editor@main/ipe-plugin/registry.json
+```
+
+安装后由插件商店启用/禁用/卸载。也可以直接把 `ipe-plugin/mediawiki-vscode-ipe.js` 放进个人 JS 或 Tampermonkey。
+
 ## InPageEdit 插件（初版）
 
-`ipe-plugin/vcpedia-vscode-ipe.js` 是 InPageEdit NEXT 插件版本，用来替代自写的前端入口：
+`ipe-plugin/mediawiki-vscode-ipe.js` 是 InPageEdit NEXT 插件版本，用来替代自写的前端入口：
 
 - 在个人 JS 里加载（InPageEdit 之后），或控制台注入文件内容；
 - 点 IPE 的编辑入口 → 关闭 IPE 弹窗 → 在 VSCode 里打开源码；
