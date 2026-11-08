@@ -53,6 +53,24 @@
     document.head.append(style);
   }
 
+  function refreshBar() {
+    var bar = document.querySelector('.vcpe-ipe-bar');
+    if (!bar || !session) return;
+    var submit = bar.querySelector('.vcpe-ipe-submit');
+    if (submit) submit.disabled = !!session.remoteDirty || !!session.busy;
+    if (session.remoteDirty) {
+      setStatus('VSCode 里有未保存修改，先保存文件（Ctrl+S）');
+    }
+  }
+
+  function setBusy(busy) {
+    if (session) session.busy = !!busy;
+    var bar = document.querySelector('.vcpe-ipe-bar');
+    if (!bar) return;
+    bar.querySelectorAll('button').forEach(function (b) { b.disabled = !!busy; });
+    if (busy) setStatus('提交中…');
+  }
+
   function setStatus(text, kind) {
     var el = document.querySelector('.vcpe-ipe-status');
     if (!el) return;
@@ -86,8 +104,7 @@
       requestSave(bar);
     });
     bar.querySelector('.vcpe-ipe-cancel').addEventListener('click', function () {
-      restorePage();
-      endSession();
+      cancelEdit();
     });
     bar.querySelector('.vcpe-ipe-diff').addEventListener('click', function () {
       if (!session) return;
@@ -136,8 +153,11 @@
       if (!session || msg.sessionId !== session.id) return;
       if (msg.type === 'update') {
         session.text = msg.text;
-        setStatus('预览已更新');
+        session.changed = true;
         schedulePreview();
+      } else if (msg.type === 'state') {
+        session.remoteDirty = !!msg.dirty;
+        refreshBar();
       } else if (msg.type === 'scroll') {
         scrollToOccurrence(msg.text, msg.occurrence, msg.scope, msg.label, msg.prev, msg.next, msg.labelOccurrence);
       } else if (msg.type === 'save') {
@@ -377,10 +397,18 @@
     }
     if (seq !== previewSeq || !data.parse) return;
     applyFull(data.parse.text);
-    setStatus('预览已更新');
+    setStatus('预览已更新 ' + new Date().toLocaleTimeString());
   }
 
   // ---------- edit session ----------
+  function onBeforeUnload(e) {
+    if (session && (session.changed || session.remoteDirty)) {
+      e.preventDefault();
+      e.returnValue = '还有未提交的修改，确定离开？';
+      return e.returnValue;
+    }
+  }
+
   function restorePage() {
     var root = document.querySelector('#mw-content-text');
     if (root && session && session.fullOriginal) {
@@ -392,6 +420,7 @@
   function endSession() {
     session = null;
     clearTimeout(previewTimer);
+    window.removeEventListener('beforeunload', onBeforeUnload);
     var bar = document.querySelector('.vcpe-ipe-bar');
     if (bar) bar.remove();
     document.body.classList.remove('vcpe-ipe-editing');
@@ -413,7 +442,11 @@
       section: options.section,
       text: (rev && rev.content) || '',
       wikiPage: wikiPage,
+      remoteDirty: false,
+      changed: false,
+      busy: false,
     };
+    window.addEventListener('beforeunload', onBeforeUnload);
     showBar(modal);
     document.body.classList.remove('ipe-modal-no-scroll');
     setStatus('VSCode 编辑中，保存文件即刷新预览');
@@ -429,6 +462,27 @@
     });
   }
 
+  function cancelEdit() {
+    if (!session) return;
+    var pending = session.remoteDirty || session.changed;
+    if (
+      pending &&
+      !confirm(
+        session.remoteDirty
+          ? 'VSCode 里还有未保存的修改，放弃并关闭编辑器？'
+          : '还有未提交到站点的修改，确定放弃？'
+      )
+    ) {
+      return;
+    }
+    try {
+      send({ type: 'finish', sessionId: session.id, result: pending ? 'discarded' : 'unchanged' });
+    } catch (e) {}
+    window.removeEventListener('beforeunload', onBeforeUnload);
+    restorePage();
+    endSession();
+  }
+
   function showBar(modal) {
     try { modal.close(); } catch (e) {}
     ensureBar();
@@ -436,6 +490,11 @@
 
   function requestSave(bar) {
     if (!session) return;
+    if (session.remoteDirty) {
+      setStatus('VSCode 里有未保存修改，先保存文件（Ctrl+S）', 'error');
+      return;
+    }
+    setBusy(true);
     var summaryInput = bar.querySelector('.vcpe-ipe-summary');
     var minorInput = bar.querySelector('.vcpe-ipe-minor');
     var watchInput = bar.querySelector('.vcpe-ipe-watchlist');
@@ -461,11 +520,14 @@
         section: session.section,
         watchlist: session.watchlist || 'nochange',
       });
+      window.removeEventListener('beforeunload', onBeforeUnload);
       send({ type: 'save-result', sessionId: session.id, ok: true });
       setStatus(session.reload === false ? '已保存' : '已保存，正在刷新…', 'ok');
+      setBusy(false);
       if (session.reload !== false) setTimeout(function () { location.reload(); }, 800);
     } catch (e) {
       var message = (e && e.message) || String(e);
+      setBusy(false);
       send({ type: 'save-result', sessionId: session.id, ok: false, error: message });
       setStatus('保存失败：' + message, 'error');
     }
