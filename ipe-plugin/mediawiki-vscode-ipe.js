@@ -17,6 +17,18 @@
   var previewTimer = null;
   var previewSeq = 0;
 
+  // ---------- hide the native quick-edit modal before it paints ----------
+  function ensureGuardStyle() {
+    if (document.getElementById('vcpe-ipe-guard-style')) return;
+    var style = document.createElement('style');
+    style.id = 'vcpe-ipe-guard-style';
+    style.textContent = [
+      '.ipe-modal-modal__window.ipe-quickEdit{display:none!important;}',
+      '.ipe-modal-backdrop:has(+ .ipe-modal-modal .ipe-quickEdit){display:none!important;}',
+    ].join('\n');
+    document.head.append(style);
+  }
+
   // ---------- bottom bar ----------
   var barStyleId = 'vcpe-ipe-bar-style';
 
@@ -404,6 +416,7 @@
       wikiPage: wikiPage,
     };
     showBar(modal);
+    document.body.classList.remove('ipe-modal-no-scroll');
     setStatus('VSCode 编辑中，保存文件即刷新预览');
     send({
       type: 'open',
@@ -472,12 +485,14 @@
   function register(ipeCtx) {
     if (registered || !ipeCtx) return;
     registered = true;
+    ensureGuardStyle();
     connect();
     ipeCtx.plugin({
       name: 'vscode-editor',
       apply: function (ctx) {
         ctx.on('quick-edit/show-modal', function (payload) {
           try { payload.modal.close(); } catch (e) {}
+          document.body.classList.remove('ipe-modal-no-scroll');
         });
         ctx.on('quick-edit/wiki-page', function (payload) {
           startEdit(payload).catch(function (e) {
