@@ -2,7 +2,7 @@
   "manifest_version": 1,
   "name": "MediaWiki VSCode Editor",
   "homepage": "https://github.com/minortex/mediawiki-vscode-editor",
-  "base_url": "https://cdn.jsdelivr.net/gh/minortex/mediawiki-vscode-editor@latest/ipe-plugin/",
+  "base_url": "https://minortex.github.io/mediawiki-vscode-editor/ipe-plugin/",
   "packages": [
     {
       "id": "mediawiki-vscode-ipe",
