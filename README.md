@@ -20,7 +20,7 @@ VSCode --保存--> 浏览器（action=parse 渲染预览）
 1. VSCode 扩展：
 
    ```sh
-   codium --install-extension dist/mediawiki-vscode-editor-0.6.1.vsix
+   codium --install-extension dist/mediawiki-vscode-editor-0.7.0.vsix
    # 或 code --install-extension ...
 
    ```
@@ -29,7 +29,7 @@ VSCode --保存--> 浏览器（action=parse 渲染预览）
 
 2. 浏览器端二选一：
 
-   - Tampermonkey：新建脚本，粘贴 `userscript/mediawiki-vscode-editor.user.js` 的内容。脚本匹配所有站点，但只会对检测到 MediaWiki `mw.config` 的页面生效。更新时打开同一条目，全选删除后粘贴新文件再保存。装好后控制台应出现 `[mediawiki-vscode] userscript 0.6.0 loaded`。
+   - Tampermonkey：新建脚本，粘贴 `userscript/mediawiki-vscode-editor.user.js` 的内容。脚本匹配所有站点，但只会对检测到 MediaWiki `mw.config` 的页面生效。更新时打开同一条目，全选删除后粘贴新文件再保存。装好后控制台应出现 `[mediawiki-vscode] userscript 0.7.0 loaded`。
    - 或直接放进个人 JS：打开 `https://<你的 wiki>/User:<你的用户名>/common.js`（红链就创建），粘贴同一份内容并保存，然后 `?action=purge` 或 Ctrl+F5 刷新。个人 JS 只在你登录时加载，效果与 Tampermonkey 相同。
 
    不要放进 `MediaWiki:Common.js`：那需要 `editinterface` 权限，且会让所有访客都去连本机端口。
@@ -51,6 +51,8 @@ VSCode --保存--> 浏览器（action=parse 渲染预览）
 - 外链、红链、特殊页面、编辑/历史链接不拦截。
 - 取消或关闭浏览器标签时，扩展会关闭对应的 VSCode 编辑器；若文件有未保存修改，VSCode 会弹出自己的保存提示，只有真正关闭后临时文件才删除。
 - 提交成功后编辑器关闭，临时文件删除。
+- 浏览器刷新或重新打开同一页面时，如果扩展仍保留该条目的编辑会话，网页会自动恢复编辑态并重新绑定到现有编辑器；刷新不再自动结束会话。
+- 扩展命令 `MediaWiki: 在浏览器中打开当前条目`：在浏览器打开当前活动编辑会话对应的页面；若会话仍存在，网页加载后会自动恢复编辑态。
 
 ## 配置
 

@@ -2,7 +2,7 @@
   "name": "mediawiki-vscode-editor",
   "displayName": "MediaWiki ⇄ VSCode External Editor",
   "description": "Edit MediaWiki pages in VSCode; the browser previews on save and performs the edit",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "publisher": "local",
   "license": "MIT",
   "engines": {
@@ -41,6 +41,10 @@
       {
         "command": "mediawikiEditor.listWikis",
         "title": "MediaWiki: 列出已添加的 wiki"
+      },
+      {
+        "command": "mediawikiEditor.openPage",
+        "title": "MediaWiki: 在浏览器中打开当前条目"
       }
     ],
     "configuration": {

@@ -183,13 +183,25 @@
       .finally(function () { if (timer) clearTimeout(timer); });
   }
 
-  function notifyOffline(message) {
+  function notifyOffline(message, title) {
+    var text = message || 'VSCode 扩展未连接。请手动打开 VSCode，并确认已安装并启用 MediaWiki 扩展。';
+    var modal = (ipeContext && ipeContext.modal)
+      || (window.ipe && window.ipe.get && window.ipe.get('modal'));
+    if (modal && typeof modal.notify === 'function') {
+      modal.notify('warning', {
+        title: title || 'VSCode 未连接',
+        content: text,
+        position: 'top right',
+        closeAfter: {time: 8000, resetOnHover: true},
+      });
+      return;
+    }
     var old = document.getElementById('mwe-offline-notice');
     if (old) old.remove();
     var box = document.createElement('div');
     box.id = 'mwe-offline-notice';
-    box.style.cssText = 'position:fixed;right:20px;bottom:84px;z-index:2147483003;max-width:360px;background:#202122;color:#fff;padding:12px 14px;border-radius:6px;font-size:13px;line-height:1.5;box-shadow:0 2px 12px rgba(0,0,0,.35);';
-    box.textContent = message || 'VSCode 扩展未连接。请手动打开 VSCode，并确认已安装并启用 MediaWiki 扩展。';
+    box.style.cssText = 'position:fixed;top:20px;right:20px;z-index:2147483003;max-width:360px;background:#fff;color:#202122;border:1px solid #a2a9b1;border-left:4px solid #fc3;padding:12px 14px;border-radius:4px;font-size:13px;line-height:1.5;box-shadow:0 2px 12px rgba(0,0,0,.2);';
+    box.textContent = text;
     document.body.append(box);
     setTimeout(function () { box.remove(); }, 8000);
   }
@@ -199,6 +211,10 @@
   var registerSeq = 0;
   var registerWaiters = {};
   var pendingStart = null;
+  var ipeContext = null;
+  var sessionQueryPromise = null;
+  var sessionQuerySeq = 0;
+  var sessionWaiters = {};
 
   function ensureWikiRegistered() {
     if (registeredWiki) return Promise.resolve(registeredWiki);
@@ -250,19 +266,30 @@
       connected = true;
       var notice = document.getElementById('mwe-offline-notice');
       if (notice) notice.remove();
-      ensureWikiRegistered().catch(function (e) {
-        status('站点注册失败：' + ((e && e.message) || e), 'error');
-      });
-      if (pendingStart) {
-        var pending = pendingStart;
-        pendingStart = null;
-        startEdit(pending).catch(function (e) {
-          status('启动失败：' + ((e && e.message) || e), 'error');
-        });
-      }
+      (async function () {
+        try {
+          await ensureWikiRegistered();
+          var existing = await queryExistingSession();
+          if (existing) {
+            await adoptSession(existing);
+            pendingStart = null;
+            return;
+          }
+        } catch (e) {
+          status('站点注册失败：' + ((e && e.message) || e), 'error');
+        }
+        if (pendingStart) {
+          var pending = pendingStart;
+          pendingStart = null;
+          startEdit(pending).catch(function (e) {
+            status('启动失败：' + ((e && e.message) || e), 'error');
+          });
+        }
+      })();
     });
     socket.addEventListener('close', function () {
       connected = false;
+      sessionQueryPromise = null;
       setTimeout(connect, RECONNECT_MS);
     });
     socket.addEventListener('error', function () { try { socket.close(); } catch (e) {} });
@@ -271,6 +298,10 @@
       try { msg = JSON.parse(ev.data); } catch (e) { return; }
       if (msg.type === 'wiki-registered') {
         onWikiRegistered(msg);
+        return;
+      }
+      if (msg.type === 'session-result') {
+        onSessionResult(msg);
         return;
       }
       if (!session || msg.sessionId !== session.id) return;
@@ -287,6 +318,7 @@
         setStatus('正在提交…');
         saveEdit(msg.text, msg.summary, msg.minor);
       } else if (msg.type === 'finish') {
+        if (msg.result === 'closed') restorePage();
         endSession();
       }
     });
@@ -583,6 +615,76 @@
     document.body.classList.remove('mwe-ipe-editing');
   }
 
+  function queryExistingSession() {
+    if (sessionQueryPromise) return sessionQueryPromise;
+    if (!connected) return Promise.resolve(null);
+    var requestId = 'session-' + Date.now() + '-' + (++sessionQuerySeq);
+    sessionQueryPromise = new Promise(function (resolve, reject) {
+      var timer = setTimeout(function () {
+        delete sessionWaiters[requestId];
+        reject(new Error('扩展未响应会话查询'));
+      }, 8000);
+      sessionWaiters[requestId] = {resolve: resolve, reject: reject, timer: timer};
+      if (!send({
+        type: 'session-query',
+        requestId: requestId,
+        origin: location.origin,
+        title: window.mw && mw.config && mw.config.get('wgPageName'),
+      })) {
+        clearTimeout(timer);
+        delete sessionWaiters[requestId];
+        reject(new Error('扩展未连接'));
+      }
+    }).catch(function (error) {
+      sessionQueryPromise = null;
+      throw error;
+    });
+    return sessionQueryPromise;
+  }
+
+  function onSessionResult(msg) {
+    var waiter = sessionWaiters[msg.requestId];
+    if (!waiter) return;
+    clearTimeout(waiter.timer);
+    delete sessionWaiters[msg.requestId];
+    if (!msg.ok) waiter.reject(new Error(msg.error || '会话查询失败'));
+    else waiter.resolve(msg.session || null);
+  }
+
+  async function adoptSession(info) {
+    if (!info || session) return;
+    var wikiPage;
+    if (ipeContext && ipeContext.wikiPage) {
+      try {
+        wikiPage = info.revid
+          ? await ipeContext.wikiPage.newFromRevision(info.revid, info.section)
+          : await ipeContext.wikiPage.newFromTitle(info.title, false, info.section);
+      } catch (e) {
+        status('恢复会话失败：' + ((e && e.message) || e), 'error');
+        return;
+      }
+    }
+    if (!wikiPage) {
+      status('无法恢复编辑会话：InPageEdit wikiPage 不可用', 'error');
+      return;
+    }
+    session = {
+      id: info.sessionId,
+      title: info.title,
+      section: info.section,
+      text: info.text,
+      wikiPage: wikiPage,
+      remoteDirty: !!info.dirty,
+      changed: false,
+      busy: false,
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    showBar(null);
+    document.body.classList.remove('ipe-modal-no-scroll');
+    setStatus('已恢复 VSCode 编辑会话');
+    schedulePreview();
+  }
+
   async function startEdit(payload) {
     var options = payload.options;
     var modal = payload.modal;
@@ -595,10 +697,15 @@
     }
     try {
       await ensureWikiRegistered();
+      var existing = await queryExistingSession();
+      if (existing) {
+        await adoptSession(existing);
+        return;
+      }
     } catch (e) {
       var message = '站点注册失败：' + ((e && e.message) || e) + '。请更新网页端脚本并刷新页面。';
       status(message, 'error');
-      notifyOffline(message);
+      notifyOffline(message, '站点注册失败');
       return;
     }
     var rev = wikiPage.revisions && wikiPage.revisions[0];
@@ -756,6 +863,7 @@
   function register(ipeCtx) {
     if (registered || !ipeCtx) return;
     registered = true;
+    ipeContext = ipeCtx;
     ensureGuardStyle();
     connect();
     ipeCtx.plugin({

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MediaWiki ⇄ VSCode 外部编辑器
 // @namespace    mediawiki-vscode-editor
-// @version      0.6.0
+// @version      0.7.0
 // @description  在 MediaWiki 站点发起编辑，用 VSCode 改，保存即预览，浏览器内提交
 // @match        *://*/*
 // @grant        none
@@ -13,7 +13,7 @@
   'use strict';
   if (!window.mw || !mw.config || !mw.config.get('wgPageName')) return;
 
-  console.info('[mediawiki-vscode] userscript 0.6.0 loaded');
+  console.info('[mediawiki-vscode] userscript 0.7.0 loaded');
 
   const WS_URL = 'ws://127.0.0.1:8927';
   const RECONNECT_MS = 1000;
@@ -99,17 +99,28 @@
     socket.addEventListener('open', () => {
       connected = true;
       refreshStatus();
-      ensureWikiRegistered().catch((error) => {
-        notify(`站点注册失败：${error.message}`, 6000);
-      });
-      if (pendingEdit) {
-        const pending = pendingEdit;
-        pendingEdit = null;
-        startEdit(pending.section);
-      }
+      (async () => {
+        try {
+          await ensureWikiRegistered();
+          const existing = await queryExistingSession();
+          if (existing) {
+            adoptSession(existing);
+            pendingEdit = null;
+            return;
+          }
+        } catch (error) {
+          notify(`站点注册失败：${error.message}`, 6000);
+        }
+        if (pendingEdit) {
+          const pending = pendingEdit;
+          pendingEdit = null;
+          startEdit(pending.section);
+        }
+      })();
     });
     socket.addEventListener('close', () => {
       connected = false;
+      sessionQueryPromise = null;
       refreshStatus();
       setTimeout(connect, RECONNECT_MS);
     });
@@ -127,7 +138,27 @@
         }
         return;
       }
+      if (msg.type === 'session-result') {
+        onSessionResult(msg);
+        return;
+      }
       if (!session || msg.sessionId !== session.id) return;
+      if (msg.type === 'finish') {
+        if (msg.result === 'closed') {
+          if (session.patch) revertPatch();
+          if (session.fullOriginal) {
+            const root = document.querySelector('#mw-content-text');
+            root.replaceChildren(...session.fullOriginal);
+            if (window.mw?.hook && typeof jQuery === 'function') {
+              mw.hook('wikipage.content').fire(jQuery(root));
+            }
+          }
+        }
+        session = null;
+        document.body.classList.remove('mwe-editing');
+        document.querySelector('.mwe-bar')?.remove();
+        return;
+      }
       if (msg.type === 'update') {
         session.text = msg.text;
         session.changed = true;
@@ -231,7 +262,7 @@
       el = document.createElement('div');
       el.id = 'mwe-toast';
       el.style.cssText =
-        'position:fixed;right:20px;bottom:84px;z-index:2147483002;max-width:360px;' +
+        'position:fixed;right:20px;top:20px;z-index:2147483002;max-width:360px;' +
         'background:#202122;color:#fff;padding:10px 14px;border-radius:6px;font-size:13px;' +
         'box-shadow:0 2px 10px rgba(0,0,0,.35)';
       document.body.append(el);
@@ -289,6 +320,68 @@
     previewTimer = setTimeout(renderPreview, 250);
   }
 
+  function queryExistingSession() {
+    if (sessionQueryPromise) return sessionQueryPromise;
+    if (!connected) return Promise.resolve(null);
+    const requestId = `session-${Date.now()}-${++sessionQuerySeq}`;
+    sessionQueryPromise = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        sessionWaiters.delete(requestId);
+        reject(new Error('扩展未响应会话查询'));
+      }, 8000);
+      sessionWaiters.set(requestId, {resolve, reject, timer});
+      if (!send({
+        type: 'session-query',
+        requestId,
+        origin: location.origin,
+        title: mw.config.get('wgPageName'),
+      })) {
+        clearTimeout(timer);
+        sessionWaiters.delete(requestId);
+        reject(new Error('扩展未连接'));
+      }
+    }).catch((error) => {
+      sessionQueryPromise = null;
+      throw error;
+    });
+    return sessionQueryPromise;
+  }
+
+  function onSessionResult(msg) {
+    const waiter = sessionWaiters.get(msg.requestId);
+    if (!waiter) return;
+    clearTimeout(waiter.timer);
+    sessionWaiters.delete(msg.requestId);
+    if (!msg.ok) waiter.reject(new Error(msg.error || '会话查询失败'));
+    else waiter.resolve(msg.session || null);
+  }
+
+  function adoptSession(info) {
+    if (!info || session) return;
+    session = {
+      id: info.sessionId,
+      title: info.title,
+      section: info.section,
+      text: info.text,
+      base: info.basetimestamp,
+      start: info.starttimestamp,
+      revid: info.revid,
+      patch: null,
+      fullOriginal: null,
+      changed: false,
+      remoteDirty: !!info.dirty,
+    };
+    injectStyle();
+    const b = bar();
+    b.querySelector('.mwe-title').textContent =
+      info.section == null ? info.title : `${info.title} § ${info.section}`;
+    b.querySelector('.mwe-status').textContent = '已恢复 VSCode 编辑会话';
+    b.querySelector('.mwe-summary').value = '';
+    b.querySelector('.mwe-minor').checked = false;
+    document.body.classList.add('mwe-editing');
+    renderPreview();
+  }
+
   async function startEdit(section) {
     if (session) return;
     if (!connected) {
@@ -298,6 +391,11 @@
     }
     try {
       await ensureWikiRegistered();
+      const existing = await queryExistingSession();
+      if (existing) {
+        adoptSession(existing);
+        return;
+      }
     } catch (error) {
       notify(`站点注册失败：${error.message}`, 6000);
       return;
@@ -798,17 +896,6 @@
         e.preventDefault();
         e.returnValue = '';
       }
-    });
-
-    // 关闭/刷新标签：无改动才算确认，有改动只通知断开（文件保留）
-    window.addEventListener('pagehide', () => {
-      if (!session) return;
-      const clean = !session.changed && !session.remoteDirty;
-      send({
-        type: 'finish',
-        sessionId: session.id,
-        result: clean ? 'unchanged' : 'closed',
-      });
     });
 
     // 由链接跳转打开的新标签，自动进入编辑预览

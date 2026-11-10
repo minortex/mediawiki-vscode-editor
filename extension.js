@@ -308,6 +308,10 @@ async function openSession(msg, ws, wiki) {
     title: msg.title,
     section: msg.section,
     wiki,
+    revid: msg.revid,
+    basetimestamp: msg.basetimestamp,
+    starttimestamp: msg.starttimestamp,
+    created: Date.now(),
   });
   byPath.set(fsPath, msg.sessionId);
   wsSessions.get(ws)?.add(msg.sessionId);
@@ -402,9 +406,87 @@ async function handleRegisterWiki(msg, ws, context) {
   }
 }
 
+
+function normalizePageName(value) {
+  return String(value || '').replace(/_/gu, ' ').replace(/\s+/gu, ' ').trim().toLowerCase();
+}
+
+function pageUrl(wiki, title) {
+  const encoded = encodeURIComponent(String(title).replace(/ /gu, '_'))
+    .replace(/%2F/giu, '/')
+    .replace(/%3A/giu, ':');
+  try {
+    return new URL((wiki.articlePath || `${wiki.origin}/$1`).replace(/\$1/gu, encoded), wiki.origin).href;
+  } catch {
+    return undefined;
+  }
+}
+
+async function handleSessionQuery(msg, ws, context) {
+  const requestId = msg.requestId;
+  const reply = (payload) => {
+    try {
+      ws.send(JSON.stringify({type: 'session-result', requestId, ...payload}));
+    } catch {}
+  };
+  try {
+    if (!requestId) throw new Error('缺少 requestId');
+    if (!ws.origin || !msg.origin || !sameOrigin(msg.origin, ws.origin)) {
+      throw new Error('站点来源与浏览器连接不一致');
+    }
+    const title = normalizePageName(msg.title);
+    if (!title) return reply({ok: true, session: null});
+    const candidates = [];
+    for (const [sessionId, meta] of sessions) {
+      if (!sameOrigin(meta.wiki.origin, msg.origin)) continue;
+      if (normalizePageName(meta.title) !== title) continue;
+      let text;
+      try {
+        const doc = vscode.workspace.textDocuments.find((d) => d.uri.fsPath === meta.fsPath);
+        text = doc ? doc.getText() : await fs.promises.readFile(meta.fsPath, 'utf8');
+      } catch {
+        continue;
+      }
+      candidates.push({sessionId, meta, text});
+    }
+    if (!candidates.length) return reply({ok: true, session: null});
+    candidates.sort((a, b) => {
+      const af = a.meta.section == null ? 0 : 1;
+      const bf = b.meta.section == null ? 0 : 1;
+      return af - bf || b.meta.created - a.meta.created;
+    });
+    const {sessionId, meta, text} = candidates[0];
+    if (meta.ws && meta.ws !== ws) {
+      wsSessions.get(meta.ws)?.delete(sessionId);
+    }
+    meta.ws = ws;
+    wsSessions.get(ws)?.add(sessionId);
+    const doc = vscode.workspace.textDocuments.find((d) => d.uri.fsPath === meta.fsPath);
+    reply({
+      ok: true,
+      session: {
+        sessionId,
+        title: meta.title,
+        section: meta.section,
+        text,
+        dirty: !!doc?.isDirty,
+        revid: meta.revid,
+        basetimestamp: meta.basetimestamp,
+        starttimestamp: meta.starttimestamp,
+        wiki: {id: meta.wiki.id, name: meta.wiki.name, origin: meta.wiki.origin},
+      },
+    });
+    updateStatus();
+  } catch (error) {
+    reply({ok: false, error: error.message});
+  }
+}
+
 function handleMessage(msg, ws, context) {
   if (msg.type === 'register-wiki') {
     handleRegisterWiki(msg, ws, context).catch(() => {});
+  } else if (msg.type === 'session-query') {
+    handleSessionQuery(msg, ws, context).catch(() => {});
   } else if (msg.type === 'open') {
     const wiki = wikis.resolve(context, msg.wiki, ws.origin);
     if (!wiki) {
@@ -455,7 +537,8 @@ function activate(context) {
         const ids = wsSessions.get(ws) || new Set();
         wsSessions.delete(ws);
         for (const sessionId of ids) {
-          finishSession({ sessionId, result: 'disconnected' }).catch(() => {});
+          const meta = sessions.get(sessionId);
+          if (meta) meta.ws = null;
         }
         updateStatus();
       });
@@ -507,6 +590,26 @@ function activate(context) {
         vscode.window.showErrorMessage(`MediaWiki: 保存失败：${result.error}`);
       }
     }),
+    vscode.commands.registerCommand('mediawikiEditor.openPage', async () => {
+      const editor = vscode.window.activeTextEditor;
+      if (!editor) {
+        vscode.window.showInformationMessage('MediaWiki: 当前没有打开的文件。');
+        return;
+      }
+      const sessionId = byPath.get(editor.document.uri.fsPath);
+      const meta = sessionId ? sessions.get(sessionId) : undefined;
+      if (!meta) {
+        vscode.window.showInformationMessage('MediaWiki: 当前文件不是编辑会话。');
+        return;
+      }
+      const url = pageUrl(meta.wiki, meta.title);
+      if (!url) {
+        vscode.window.showErrorMessage('MediaWiki: 无法生成页面地址。');
+        return;
+      }
+      await vscode.env.openExternal(vscode.Uri.parse(url));
+      vscode.window.setStatusBarMessage(`MediaWiki: 已在浏览器打开 ${meta.title}`, 5000);
+    }),
     vscode.commands.registerCommand('mediawikiEditor.check', async () => {
       const editor = vscode.window.activeTextEditor;
       if (!editor) {
@@ -534,6 +637,20 @@ function activate(context) {
       if (!byPath.has(doc.uri.fsPath)) return;
       push(doc);
       notifyDirty(doc);
+    }),
+    vscode.workspace.onDidCloseTextDocument((doc) => {
+      const sessionId = byPath.get(doc.uri.fsPath);
+      const meta = sessionId ? sessions.get(sessionId) : undefined;
+      if (!meta) return;
+      sessions.delete(sessionId);
+      byPath.delete(meta.fsPath);
+      wsSessions.get(meta.ws)?.delete(sessionId);
+      clearTimeout(dirtyTimers.get(meta.fsPath));
+      dirtyTimers.delete(meta.fsPath);
+      broadcast(wss, {type: 'finish', sessionId, result: 'closed'});
+      vscode.window.showWarningMessage(
+        `MediaWiki: 编辑会话已关闭，临时文件保留：${meta.fsPath}`
+      );
     }),
     vscode.window.onDidChangeTextEditorSelection((event) => {
       const sessionId = byPath.get(event.textEditor.document.uri.fsPath);
