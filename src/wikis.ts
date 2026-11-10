@@ -13,23 +13,23 @@ const {
 
 const STATE_KEY = 'mediawikiEditor.wikis';
 
-function custom(context) {
-  return context.globalState.get(STATE_KEY, []).filter((wiki) => wiki && wiki.origin);
+function custom(context: any): any[] {
+  return context.globalState.get(STATE_KEY, []).filter((wiki: any) => wiki && wiki.origin);
 }
 
-function saveCustom(context, wikis) {
-  context.globalState.update(STATE_KEY, wikis.filter((wiki) => wiki && wiki.origin));
+function saveCustom(context: any, wikis: any[]): void {
+  context.globalState.update(STATE_KEY, wikis.filter((wiki: any) => wiki && wiki.origin));
 }
 
-function all(context) {
+function all(context: any): any[] {
   return custom(context);
 }
 
-function normalizeHint(hint) {
+function normalizeHint(hint: any): string {
   return String(hint || '').trim().replace(/\/+$/u, '').toLowerCase();
 }
 
-function find(context, hint) {
+function find(context: any, hint: any): any {
   const raw = normalizeHint(hint);
   if (!raw) return undefined;
   for (const wiki of all(context)) {
@@ -45,13 +45,13 @@ function find(context, hint) {
   }
 }
 
-function resolve(context, hint, fallbackOrigin) {
+function resolve(context: any, hint: any, fallbackOrigin?: any): any {
   if (hint) return find(context, hint) || find(context, fallbackOrigin);
   if (fallbackOrigin) return find(context, fallbackOrigin);
   return undefined;
 }
 
-function directoryFor(root, wiki) {
+function directoryFor(root: any, wiki: any): string {
   const host = wiki.host || (() => {
     try {
       return new URL(wiki.url).host;
@@ -62,11 +62,11 @@ function directoryFor(root, wiki) {
   return path.join(root, sanitizeHost(host));
 }
 
-function configFile(context, id) {
+function configFile(context: any, id: string): string {
   return path.join(context.globalStorageUri.fsPath, 'wikis', `${id}.json`);
 }
 
-async function upsert(context, payload) {
+async function upsert(context: any, payload: any): Promise<any> {
   const origin = normalizeOrigin(payload.origin);
   const query = payload.siteinfo;
   if (!query?.general || !query.magicwords) {
@@ -112,7 +112,7 @@ async function upsert(context, payload) {
   return entry;
 }
 
-async function promptRemove(context, onChange) {
+async function promptRemove(context: any, onChange: () => void): Promise<void> {
   const wikis = custom(context);
   if (!wikis.length) {
     vscode.window.showInformationMessage('MediaWiki: 没有已注册的 wiki。');
@@ -140,7 +140,7 @@ async function promptRemove(context, onChange) {
   vscode.window.showInformationMessage(`MediaWiki: 已删除 ${picked.wiki.name}`);
 }
 
-async function showList(context) {
+async function showList(context: any): Promise<void> {
   const items = all(context).map((wiki) => ({
     label: wiki.name,
     description: wiki.origin,
@@ -153,7 +153,7 @@ async function showList(context) {
   });
 }
 
-function register(context, onChange) {
+function register(context: any, onChange: () => void): any[] {
   return [
     vscode.commands.registerCommand('mediawikiEditor.removeWiki', () => promptRemove(context, onChange)),
     vscode.commands.registerCommand('mediawikiEditor.listWikis', () => showList(context)),

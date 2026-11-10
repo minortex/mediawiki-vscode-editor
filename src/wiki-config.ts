@@ -14,7 +14,7 @@ function baseConfig() {
   return JSON.parse(fs.readFileSync(defaultConfigPath(), 'utf8'));
 }
 
-function normalizeOrigin(input) {
+function normalizeOrigin(input: any): string {
   const value = String(input || '').trim();
   if (!value) throw new Error('站点地址为空');
   const url = new URL(/^[a-z][\w+.-]*:\/\//iu.test(value) ? value : `https://${value}`);
@@ -22,7 +22,7 @@ function normalizeOrigin(input) {
   return url.origin;
 }
 
-function normalizeWikiKey(input) {
+function normalizeWikiKey(input: any): string {
   if (!input) return '';
   try {
     return normalizeOrigin(input);
@@ -31,7 +31,7 @@ function normalizeWikiKey(input) {
   }
 }
 
-async function fetchSiteInfo(origin, fetchImpl = fetch) {
+async function fetchSiteInfo(origin: any, fetchImpl: typeof fetch = fetch): Promise<{origin: string; api: string; query: any}> {
   const base = normalizeOrigin(origin);
   const candidates = [`${base}/api.php`, `${base}/w/api.php`];
   let lastError;
@@ -61,7 +61,7 @@ async function fetchSiteInfo(origin, fetchImpl = fetch) {
   throw new Error(`无法读取站点信息：${lastError?.message || '未知错误'}`);
 }
 
-function buildParserConfig(query, siteOrigin) {
+function buildParserConfig(query: any, siteOrigin?: any): any {
   const {
     general,
     namespaces = {},
@@ -74,8 +74,8 @@ function buildParserConfig(query, siteOrigin) {
   } = query;
   const base = baseConfig();
   const site = normalizeOrigin(siteOrigin || general.server);
-  const lower = (s) => s.toLowerCase();
-  const uniq = (items) => [...new Set(items)];
+  const lower = (s: string) => s.toLowerCase();
+  const uniq = (items: any[]) => [...new Set(items)];
 
   const nsPairs = Object.entries(namespaces as Record<string, any>).flatMap(([id, ns]: [string, any]) => {
     const pairs = [[Number(id), ns.name]];
@@ -87,12 +87,12 @@ function buildParserConfig(query, siteOrigin) {
   for (const {id, alias} of namespacealiases) nsid[lower(alias)] = id;
   nsid[''] = 0;
 
-  const behavior = magicwords.filter((m) => m.aliases.some((a) => /^__.+__$/u.test(a)));
+  const behavior = magicwords.filter((m: any) => m.aliases.some((a: string) => /^__.+__$/u.test(a)));
   const hookSet = new Set(functionhooks.map(lower));
   const variableSet = new Set(variables);
   const special = new Set(['msg', 'raw', 'subst', 'safesubst', 'msgnw', 'redirect']);
   const option = /^(?:rawsuffix|timef-.+|.+_option_.+)$/u;
-  const isParserFunction = (m) => !variableSet.has(m.name)
+  const isParserFunction = (m: any) => !variableSet.has(m.name)
     && !special.has(m.name)
     && !m.name.startsWith('img_')
     && !option.test(m.name)
@@ -102,8 +102,8 @@ function buildParserConfig(query, siteOrigin) {
   const sensitive = {...base.parserFunction[1], '=': '='};
   const functionHook = new Set([...base.functionHook, ...functionhooks.map(lower), 'msgnw']);
   const hashNames = new Set([
-    ...Object.entries(base.parserFunction[0]).filter(([key]) => key.startsWith('#')).map(([, name]) => name),
-    ...Object.entries(base.parserFunction[1]).filter(([key]) => key.startsWith('#')).map(([, name]) => name),
+    ...Object.entries(base.parserFunction[0]).filter(([key]: [string, any]) => key.startsWith('#')).map(([, name]: [string, any]) => name),
+    ...Object.entries(base.parserFunction[1]).filter(([key]: [string, any]) => key.startsWith('#')).map(([, name]: [string, any]) => name),
     'default', 'widget', 'len', 'pos', 'rpos', 'sub', 'count', 'replace', 'explode', 'urldecode',
     'rel2abs', 'titleparts', 'time', 'timel', 'timef', 'timefl', 'lst', 'lstx', 'lsth', 'target',
     'babel', 'coordinates', 'related', 'categorytree', 'noexternallanglinks', 'property', 'statements',
@@ -112,11 +112,11 @@ function buildParserConfig(query, siteOrigin) {
   ]);
   for (const m of magicwords.filter(isParserFunction)) {
     const target = m['case-sensitive'] ? sensitive : insensitive;
-    const existing = Object.entries(target).filter(([, canonical]) => canonical === m.name).map(([key]) => key);
+    const existing = Object.entries(target).filter(([, canonical]: [string, any]) => canonical === m.name).map(([key]: [string, any]) => key);
     const hash = hashNames.has(m.name)
       || (existing.length > 0
-        ? existing.some((key) => key.startsWith('#'))
-        : !hookSet.has(lower(m.name)) && !m.aliases.some((a) => a.endsWith(':')));
+        ? existing.some((key: string) => key.startsWith('#'))
+        : !hookSet.has(lower(m.name)) && !m.aliases.some((a: string) => a.endsWith(':')));
     for (let alias of m.aliases) {
       if (/^[^#＃].*：$/u.test(alias)) continue;
       alias = alias.replace(/:$/u, '');
@@ -140,20 +140,20 @@ function buildParserConfig(query, siteOrigin) {
     }
   }
 
-  const aliasesOf = (name) => magicwords.find((m) => m.name === name)?.aliases
-    .map((a) => lower(a.replace(/:$/u, ''))) ?? [];
+  const aliasesOf = (name: string) => magicwords.find((m: any) => m.name === name)?.aliases
+    .map((a: string) => lower(a.replace(/:$/u, ''))) ?? [];
   const imageKeywords = Object.fromEntries(magicwords
-    .filter((m) => m.name.startsWith('img_') && m.name !== 'img_lossy')
-    .flatMap((m) => {
+    .filter((m: any) => m.name.startsWith('img_') && m.name !== 'img_lossy')
+    .flatMap((m: any) => {
       const key = m.name.slice(4).replaceAll('_', '-');
-      return (key === 'alt' ? m.aliases.filter((a) => a.includes('$1')) : m.aliases)
-        .map((a) => [a, key]);
+      return (key === 'alt' ? m.aliases.filter((a: string) => a.includes('$1')) : m.aliases)
+        .map((a: string) => [a, key]);
     }));
   const articlePath = new URL(general.articlepath || '/$1', site).href;
 
   return {
     ...base,
-    ext: extensiontags.map((tag) => tag.replace(/^<|>$/gu, '').toLowerCase()),
+    ext: extensiontags.map((tag: string) => tag.replace(/^<|>$/gu, '').toLowerCase()),
     namespaces: Object.fromEntries(nsPairs.map(([id, name]) => [id, name])),
     nsid,
     functionHook: [...functionHook].sort(),
@@ -166,20 +166,20 @@ function buildParserConfig(query, siteOrigin) {
     ],
     doubleUnderscore: [[], [], switchesInsensitive, switchesSensitive],
     protocol: base.protocol,
-    interwiki: interwikimap.map(({prefix}) => prefix),
+    interwiki: interwikimap.map(({prefix}: {prefix: string}) => prefix),
     img: imageKeywords,
-    redirection: aliasesOf('redirect').filter((a) => a.startsWith('#')),
-    variants: general.variants?.map(({code}) => code) ?? base.variants,
+    redirection: aliasesOf('redirect').filter((a: string) => a.startsWith('#')),
+    variants: general.variants?.map(({code}: {code: string}) => code) ?? base.variants,
     articlePath,
     server: site,
   };
 }
 
-function sanitizeHost(input) {
+function sanitizeHost(input: any): string {
   return String(input || '').replace(/[\\/:*?"<>|\r\n]/g, '_');
 }
 
-function wikiIdFromOrigin(origin) {
+function wikiIdFromOrigin(origin: any): string {
   try {
     return sanitizeHost(new URL(normalizeOrigin(origin)).host).toLowerCase();
   } catch {

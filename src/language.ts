@@ -32,7 +32,7 @@ function diagnosticMaxLength() {
   return Math.max(0, Number(setting('diagnosticsMaxLength', 100000)) || 0);
 }
 
-function clone(value) {
+function clone(value: any): any {
   return JSON.parse(JSON.stringify(value));
 }
 
@@ -48,7 +48,7 @@ function registerLanguageFeatures(context: any, options: any = {}) {
   const lspActions = new WeakMap(); // vscode.CodeAction -> LSP action
   const diagnostics = vscode.languages.createDiagnosticCollection('mediawiki');
 
-  function serviceFor(document) {
+  function serviceFor(document: any): any {
     if (!enabled()) return undefined;
     const key = document.uri.toString();
     let service = services.get(key);
@@ -60,7 +60,7 @@ function registerLanguageFeatures(context: any, options: any = {}) {
     return service;
   }
 
-  function disposeService(uri, forget = false) {
+  function disposeService(uri: any, forget = false): void {
     const key = uri.toString();
     const service = services.get(key);
     if (service) {
@@ -91,7 +91,7 @@ function registerLanguageFeatures(context: any, options: any = {}) {
     }
   }
 
-  async function runDiagnostics(document) {
+  async function runDiagnostics(document: any): Promise<void> {
     const service = serviceFor(document);
     if (!service) return;
     const maxLength = diagnosticMaxLength();
@@ -111,12 +111,12 @@ function registerLanguageFeatures(context: any, options: any = {}) {
     diagnostics.set(
       document.uri,
       result
-        .filter((item) => warnings || item.severity === 1 || item.severity === undefined)
+        .filter((item: any) => warnings || item.severity === 1 || item.severity === undefined)
         .map(toDiagnostic)
     );
   }
 
-  function schedule(document, delay = diagnosticDelay()) {
+  function schedule(document: any, delay = diagnosticDelay()): void {
     if (!enabled() || document.languageId !== LANGUAGE_ID) return;
     const key = document.uri.toString();
     clearTimeout(timers.get(key));
@@ -129,7 +129,7 @@ function registerLanguageFeatures(context: any, options: any = {}) {
     );
   }
 
-  function apply(document, wiki, pageTitle) {
+  function apply(document: any, wiki?: any, pageTitle?: any): any {
     if (wiki) documentWikis.set(document.uri.toString(), wiki);
     if (pageTitle) documentPages.set(document.uri.toString(), pageTitle);
     if (!enabled()) return document;
@@ -138,7 +138,7 @@ function registerLanguageFeatures(context: any, options: any = {}) {
   }
 
 
-  function astFor(document) {
+  function astFor(document: any): any {
     const key = document.uri.toString();
     const cached = astCache.get(key);
     if (cached && cached.version === document.version) return cached.root;
@@ -158,7 +158,7 @@ function registerLanguageFeatures(context: any, options: any = {}) {
     }
   }
 
-  async function openDefinition(wiki, target) {
+  async function openDefinition(wiki: any, target: any): Promise<boolean> {
     if (!target) return false;
     if (typeof options.navigateEdit !== 'function') return false;
     return !!(await options.navigateEdit({
@@ -169,11 +169,11 @@ function registerLanguageFeatures(context: any, options: any = {}) {
   }
 
   const provider = {
-    async provideFoldingRanges(document) {
+    async provideFoldingRanges(document: any) {
       const service = serviceFor(document);
       if (!service) return [];
       const ranges = await service.provideFoldingRanges(document.getText());
-      return ranges.map((range) => {
+      return ranges.map((range: any) => {
         const kind = range.kind === 'comment'
           ? vscode.FoldingRangeKind.Comment
           : range.kind === 'imports'
@@ -185,11 +185,11 @@ function registerLanguageFeatures(context: any, options: any = {}) {
       });
     },
 
-    async provideDocumentSymbols(document) {
+    async provideDocumentSymbols(document: any) {
       const service = serviceFor(document);
       if (!service) return [];
       const symbols = await service.provideDocumentSymbols(document.getText());
-      const convert = (symbol) => {
+      const convert = (symbol: any) => {
         const result = new vscode.DocumentSymbol(
           symbol.name,
           symbol.detail || '',
@@ -203,7 +203,7 @@ function registerLanguageFeatures(context: any, options: any = {}) {
       return symbols.map(convert);
     },
 
-    async provideCompletionItems(document, position) {
+    async provideCompletionItems(document: any, position: any) {
       const service = serviceFor(document);
       if (!service) return undefined;
       const items = await service.provideCompletionItems(
@@ -211,7 +211,7 @@ function registerLanguageFeatures(context: any, options: any = {}) {
         toPosition(position)
       );
       if (!items) return undefined;
-      return items.map((item) => {
+      return items.map((item: any) => {
         const result = new vscode.CompletionItem(
           item.label,
           toCompletionItemKind(item.kind)
@@ -240,7 +240,7 @@ function registerLanguageFeatures(context: any, options: any = {}) {
       });
     },
 
-    resolveCompletionItem(item) {
+    resolveCompletionItem(item: any) {
       const stored = lspItems.get(item);
       if (!stored) return item;
       const resolved = stored.service.resolveCompletionItem(stored.item);
@@ -253,7 +253,7 @@ function registerLanguageFeatures(context: any, options: any = {}) {
       return item;
     },
 
-    async provideHover(document, position) {
+    async provideHover(document: any, position: any) {
       const service = serviceFor(document);
       if (!service) return undefined;
       const hover = await service.provideHover(document.getText(), toPosition(position));
@@ -264,7 +264,7 @@ function registerLanguageFeatures(context: any, options: any = {}) {
       );
     },
 
-    async provideSignatureHelp(document, position) {
+    async provideSignatureHelp(document: any, position: any) {
       const service = serviceFor(document);
       if (!service) return undefined;
       const help = await service.provideSignatureHelp(
@@ -272,13 +272,13 @@ function registerLanguageFeatures(context: any, options: any = {}) {
         toPosition(position)
       );
       if (!help) return undefined;
-      const signatures = help.signatures.map((signature) => {
+      const signatures = help.signatures.map((signature: any) => {
         const information = new vscode.SignatureInformation(
           signature.label,
           signature.documentation ? toMarkdown(signature.documentation) : undefined
         );
         information.parameters = (signature.parameters || []).map(
-          (parameter) => new vscode.ParameterInformation(parameter.label)
+          (parameter: any) => new vscode.ParameterInformation(parameter.label)
         );
         return information;
       });
@@ -289,16 +289,16 @@ function registerLanguageFeatures(context: any, options: any = {}) {
       );
     },
 
-    async provideDocumentLinks(document) {
+    async provideDocumentLinks(document: any) {
       const service = serviceFor(document);
       if (!service) return [];
       const links = await service.provideLinks(document.getText());
       return links
-        .filter((link) => link.target)
-        .map((link) => new vscode.DocumentLink(toRange(link.range), vscode.Uri.parse(link.target)));
+        .filter((link: any) => link.target)
+        .map((link: any) => new vscode.DocumentLink(toRange(link.range), vscode.Uri.parse(link.target)));
     },
 
-    async provideDefinition(document, position) {
+    async provideDefinition(document: any, position: any) {
       const service = serviceFor(document);
       if (!service) return undefined;
       const target = findDefinitionTarget({
@@ -317,7 +317,7 @@ function registerLanguageFeatures(context: any, options: any = {}) {
         toPosition(position)
       );
       return (locations || []).map(
-        (location) =>
+        (location: any) =>
           new vscode.Location(
             location.uri ? vscode.Uri.parse(location.uri) : document.uri,
             toRange(location.range)
@@ -325,7 +325,7 @@ function registerLanguageFeatures(context: any, options: any = {}) {
       );
     },
 
-    async provideReferences(document, position) {
+    async provideReferences(document: any, position: any) {
       const service = serviceFor(document);
       if (!service) return undefined;
       const locations = await service.provideReferences(
@@ -333,7 +333,7 @@ function registerLanguageFeatures(context: any, options: any = {}) {
         toPosition(position)
       );
       return (locations || []).map(
-        (location) =>
+        (location: any) =>
           new vscode.Location(
             location.uri ? vscode.Uri.parse(location.uri) : document.uri,
             toRange(location.range)
@@ -341,7 +341,7 @@ function registerLanguageFeatures(context: any, options: any = {}) {
       );
     },
 
-    async provideDocumentHighlights(document, position) {
+    async provideDocumentHighlights(document: any, position: any) {
       const service = serviceFor(document);
       if (!service) return undefined;
       const highlights = await service.provideDocumentHighlights(
@@ -349,7 +349,7 @@ function registerLanguageFeatures(context: any, options: any = {}) {
         toPosition(position)
       );
       return (highlights || []).map(
-        (highlight) =>
+        (highlight: any) =>
           new vscode.DocumentHighlight(
             toRange(highlight.range),
             Math.max(0, (highlight.kind ?? 1) - 1)
@@ -357,7 +357,7 @@ function registerLanguageFeatures(context: any, options: any = {}) {
       );
     },
 
-    async prepareRename(document, position) {
+    async prepareRename(document: any, position: any) {
       const service = serviceFor(document);
       if (!service) return undefined;
       const range = await service.resolveRenameLocation(
@@ -367,7 +367,7 @@ function registerLanguageFeatures(context: any, options: any = {}) {
       return range ? toRange(range) : undefined;
     },
 
-    async provideRenameEdits(document, position, newName) {
+    async provideRenameEdits(document: any, position: any, newName: any) {
       const service = serviceFor(document);
       if (!service) return undefined;
       const edit = await service.provideRenameEdits(
@@ -378,7 +378,7 @@ function registerLanguageFeatures(context: any, options: any = {}) {
       return toWorkspaceEdit(edit, document);
     },
 
-    async provideCodeActions(document, range, actionContext) {
+    async provideCodeActions(document: any, range: any, actionContext: any) {
       const service = serviceFor(document);
       if (!service) return [];
       const lspDiagnostics = actionContext.diagnostics.map(toLspDiagnostic);
@@ -395,7 +395,7 @@ function registerLanguageFeatures(context: any, options: any = {}) {
           end: toPosition(end),
         })
         : [];
-      return [...actions, ...refactors].map((action) => {
+      return [...actions, ...refactors].map((action: any) => {
         const result = new vscode.CodeAction(
           action.title,
           vscode.CodeActionKind.Empty.append(action.kind || 'quickfix')
@@ -414,7 +414,7 @@ function registerLanguageFeatures(context: any, options: any = {}) {
       });
     },
 
-    resolveCodeAction(action) {
+    resolveCodeAction(action: any) {
       const stored = lspActions.get(action);
       if (!stored) return action;
       const resolved = stored.service.resolveCodeAction(stored.action);
@@ -422,12 +422,12 @@ function registerLanguageFeatures(context: any, options: any = {}) {
       return action;
     },
 
-    async provideDocumentColors(document) {
+    async provideDocumentColors(document: any) {
       const service = serviceFor(document);
       if (!service) return [];
       const colors = await service.provideDocumentColors(document.getText());
       return colors.map(
-        (item) =>
+        (item: any) =>
           new vscode.ColorInformation(
             toRange(item.range),
             new vscode.Color(
@@ -440,7 +440,7 @@ function registerLanguageFeatures(context: any, options: any = {}) {
       );
     },
 
-    provideColorPresentations(color, colorContext) {
+    provideColorPresentations(color: any, colorContext: any) {
       const service = serviceFor(colorContext.document);
       if (!service) return [];
       const presentations = service.provideColorPresentations({
@@ -452,7 +452,7 @@ function registerLanguageFeatures(context: any, options: any = {}) {
         },
         range: toLspRange(colorContext.range),
       });
-      return presentations.map((presentation) => {
+      return presentations.map((presentation: any) => {
         const result = new vscode.ColorPresentation(presentation.label);
         if (presentation.textEdit) {
           result.textEdit = vscode.TextEdit.replace(
@@ -464,14 +464,14 @@ function registerLanguageFeatures(context: any, options: any = {}) {
       });
     },
 
-    async provideInlayHints(document) {
+    async provideInlayHints(document: any) {
       const service = serviceFor(document);
       if (!service) return [];
       const hints = await service.provideInlayHints(document.getText());
-      return hints.map((hint) => {
+      return hints.map((hint: any) => {
         const label = typeof hint.label === 'string'
           ? hint.label
-          : hint.label.map((part) => part.value ?? part.label).join('');
+          : hint.label.map((part: any) => part.value ?? part.label).join('');
         return new vscode.InlayHint(
           new vscode.Position(hint.position.line, hint.position.character),
           label,
@@ -513,7 +513,7 @@ function registerLanguageFeatures(context: any, options: any = {}) {
     vscode.languages.registerColorProvider(SELECTOR, provider),
     vscode.languages.registerInlayHintsProvider(SELECTOR, provider),
     vscode.languages.registerDocumentSemanticTokensProvider(SELECTOR, {
-      provideDocumentSemanticTokens(document, token) {
+      provideDocumentSemanticTokens(document: any, token: any) {
         if (!enabled()) return undefined;
         const maxLength = diagnosticMaxLength();
         if (maxLength > 0 && document.getText().length > maxLength) return undefined;
@@ -523,11 +523,11 @@ function registerLanguageFeatures(context: any, options: any = {}) {
       },
     }),
     {dispose: () => { for (const key of [...services.keys()]) disposeService(vscode.Uri.parse(key), true); }},
-    vscode.workspace.onDidOpenTextDocument((document) => schedule(document, 0)),
-    vscode.workspace.onDidChangeTextDocument((event) => schedule(event.document)),
-    vscode.workspace.onDidSaveTextDocument((document) => schedule(document, 0)),
-    vscode.workspace.onDidCloseTextDocument((document) => disposeService(document.uri, true)),
-    vscode.workspace.onDidChangeConfiguration((event) => {
+    vscode.workspace.onDidOpenTextDocument((document: any) => schedule(document, 0)),
+    vscode.workspace.onDidChangeTextDocument((event: any) => schedule(event.document)),
+    vscode.workspace.onDidSaveTextDocument((document: any) => schedule(document, 0)),
+    vscode.workspace.onDidCloseTextDocument((document: any) => disposeService(document.uri, true)),
+    vscode.workspace.onDidChangeConfiguration((event: any) => {
       const keys = [
         'languageFeatures',
         'diagnosticsWarnings',
@@ -551,13 +551,13 @@ function registerLanguageFeatures(context: any, options: any = {}) {
     languageId: LANGUAGE_ID,
     apply,
     dispose: () => { for (const key of [...services.keys()]) disposeService(vscode.Uri.parse(key), true); },
-    check: (document, wiki, pageTitle) => {
+    check: (document: any, wiki: any, pageTitle: any) => {
       if (wiki) documentWikis.set(document.uri.toString(), wiki);
       if (pageTitle) documentPages.set(document.uri.toString(), pageTitle);
       return runDiagnostics(document);
     },
     refresh: resetServices,
-    ast: (document) => astFor(document),
+    ast: (document: any) => astFor(document),
   };
 }
 

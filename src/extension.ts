@@ -28,7 +28,7 @@ function config() {
   return vscode.workspace.getConfiguration('mediawikiEditor');
 }
 
-function safeName(title) {
+function safeName(title: string): string {
   return title.replace(/[\\/:*?"<>|\r\n]/g, '_');
 }
 
@@ -47,7 +47,7 @@ function defaultDir() {
 }
 
 function stamp(date = new Date()) {
-  const p = (n) => String(n).padStart(2, '0');
+  const p = (n: number) => String(n).padStart(2, '0');
   return (
     `${date.getFullYear()}${p(date.getMonth() + 1)}${p(date.getDate())}` +
     `-${p(date.getHours())}${p(date.getMinutes())}${p(date.getSeconds())}`
@@ -64,7 +64,7 @@ function updateStatus() {
   statusBar.show();
 }
 
-function push(doc) {
+function push(doc: any): boolean {
   const sessionId = sessionManager?.idForPath(doc.uri.fsPath);
   if (!sessionId || !bridge) return false;
   const count = bridge.broadcast({
@@ -78,19 +78,19 @@ function push(doc) {
   return count > 0;
 }
 
-function notifyDirty(doc) {
+function notifyDirty(doc: any): void {
   const sessionId = sessionManager?.idForPath(doc.uri.fsPath);
   if (!sessionId || !bridge) return;
   bridge.broadcast({type: 'state', sessionId, dirty: doc.isDirty});
 }
 
-function clearDirty(fsPath) {
+function clearDirty(fsPath: string): void {
   clearTimeout(dirtyTimers.get(fsPath));
   dirtyTimers.delete(fsPath);
 }
 
-async function closeAndDelete(fsPath) {
-  const doc = vscode.workspace.textDocuments.find((d) => d.uri.fsPath === fsPath);
+async function closeAndDelete(fsPath: string): Promise<void> {
+  const doc = vscode.workspace.textDocuments.find((d: any) => d.uri.fsPath === fsPath);
   if (doc && doc.isDirty) {
     // 用户已在页面上确认，先把内容刷到临时文件，避免再弹一次保存提示
     try {
@@ -98,8 +98,8 @@ async function closeAndDelete(fsPath) {
     } catch {}
   }
   const tab = vscode.window.tabGroups?.all
-    ?.flatMap((group) => group.tabs)
-    .find((t) => t.input?.uri?.fsPath === fsPath);
+    ?.flatMap((group: any) => group.tabs)
+    .find((t: any) => t.input?.uri?.fsPath === fsPath);
   if (tab) {
     try {
       await vscode.window.tabGroups.close(tab);
@@ -112,7 +112,7 @@ async function closeAndDelete(fsPath) {
 
 let suppressScrollUntil = 0;
 
-function revealLine(editor, line) {
+function revealLine(editor: any, line: number): void {
   const pos = new vscode.Position(line, 0);
   suppressScrollUntil = Date.now() + 700;
   editor.selection = new vscode.Selection(pos, pos);
@@ -120,11 +120,11 @@ function revealLine(editor, line) {
   vscode.window.setStatusBarMessage(`MediaWiki: 定位到第 ${line + 1} 行`, 2000);
 }
 
-async function locateInEditor(msg) {
+async function locateInEditor(msg: any): Promise<void> {
   if (!msg.text) return;
   const meta = sessionManager?.get(msg.sessionId);
   if (!meta) return;
-  const doc = vscode.workspace.textDocuments.find((d) => d.uri.fsPath === meta.fsPath);
+  const doc = vscode.workspace.textDocuments.find((d: any) => d.uri.fsPath === meta.fsPath);
   if (!doc) return;
   const line = itemsUtil.findLineByText(doc, msg.text, languageFeatures?.ast?.(doc));
   if (line < 0) return;
@@ -132,7 +132,7 @@ async function locateInEditor(msg) {
   revealLine(editor, line);
 }
 
-function handleMessage(msg, ws, context) {
+function handleMessage(msg: any, ws: any, context: any): void {
   if (msg.type === 'register-wiki') {
     sessionController.registerWiki(msg, ws).catch(() => {});
   } else if (msg.type === 'session-query') {
@@ -145,7 +145,7 @@ function handleMessage(msg, ws, context) {
       );
       return;
     }
-    sessionController.open(msg, ws, wiki).catch((err) =>
+    sessionController.open(msg, ws, wiki).catch((err: any) =>
       vscode.window.showErrorMessage(`MediaWiki: ${err.message}`)
     );
   } else if (msg.type === 'finish') {
@@ -153,13 +153,13 @@ function handleMessage(msg, ws, context) {
   } else if (msg.type === 'locate') {
     locateInEditor(msg).catch(() => {});
   } else if (msg.type === 'request-save') {
-    sessionController.requestSave(msg).catch((err) =>
+    sessionController.requestSave(msg).catch((err: any) =>
       vscode.window.showErrorMessage(`MediaWiki: ${err.message}`)
     );
   }
 }
 
-function activate(context) {
+function activate(context: any): void {
   statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   statusBar.command = 'mediawikiEditor.status';
   updateStatus();
@@ -190,15 +190,15 @@ function activate(context) {
     getLanguageFeatures: () => languageFeatures,
   });
   languageFeatures = language.registerLanguageFeatures(context, {
-    navigateEdit: (request) => sessionController.navigate(request),
+    navigateEdit: (request: any) => sessionController.navigate(request),
   });
 
   bridge = new BrowserBridge();
   bridge.start({
     port,
     allowedOrigin,
-    onMessage: (msg, ws) => handleMessage(msg, ws, context),
-    onConnection: (ws) => {
+    onMessage: (msg: any, ws: any) => handleMessage(msg, ws, context),
+    onConnection: (ws: any) => {
       sessionManager?.registerSocket(ws);
       ws.on('close', () => {
         sessionManager?.detachWs(ws);
@@ -206,7 +206,7 @@ function activate(context) {
       });
       updateStatus();
     },
-    onError: (err) => {
+    onError: (err: any) => {
       vscode.window.showErrorMessage(
         `MediaWiki: 本地服务启动失败（端口 ${port}）：${err.message}`
       );
@@ -294,12 +294,12 @@ function activate(context) {
           `${sessionManager?.values().length || 0} 个活动编辑会话。`
       );
     }),
-    vscode.workspace.onDidSaveTextDocument((doc) => {
+    vscode.workspace.onDidSaveTextDocument((doc: any) => {
       if (!sessionManager?.idForPath(doc.uri.fsPath)) return;
       push(doc);
       notifyDirty(doc);
     }),
-    vscode.workspace.onDidCloseTextDocument((doc) => {
+    vscode.workspace.onDidCloseTextDocument((doc: any) => {
       const sessionId = sessionManager?.idForPath(doc.uri.fsPath);
       const meta = sessionId ? sessionManager?.get(sessionId) : undefined;
       if (!meta || meta.state === 'draft') return;
@@ -315,7 +315,7 @@ function activate(context) {
         `MediaWiki: 编辑器已关闭，草稿已保留。可运行「MediaWiki: 恢复编辑草稿」。`
       );
     }),
-    vscode.window.onDidChangeTextEditorSelection((event) => {
+    vscode.window.onDidChangeTextEditorSelection((event: any) => {
       const sessionId = sessionManager?.idForPath(event.textEditor.document.uri.fsPath);
       if (!sessionId || !bridge) return;
       if (Date.now() < suppressScrollUntil) return;
@@ -350,7 +350,7 @@ function activate(context) {
         }, 200)
       );
     }),
-    vscode.workspace.onDidChangeTextDocument((event) => {
+    vscode.workspace.onDidChangeTextDocument((event: any) => {
       const fsPath = event.document.uri.fsPath;
       if (!sessionManager?.idForPath(fsPath)) return;
       clearTimeout(dirtyTimers.get(fsPath));

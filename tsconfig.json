@@ -14,7 +14,7 @@
       "node",
       "vscode"
     ],
-    "noImplicitAny": false,
+    "noImplicitAny": true,
     "useUnknownInCatchVariables": false
   },
   "include": [

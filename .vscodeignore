@@ -7,4 +7,3 @@ dist/**
 TODO.md
 src/**
 tsconfig.json
-tsconfig.strict.json

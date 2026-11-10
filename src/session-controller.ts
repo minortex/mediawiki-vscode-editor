@@ -2,7 +2,7 @@
 
 const {normalizeOrigin} = require('./wiki-config');
 
-function createSessionController(deps) {
+function createSessionController(deps: any): any {
   const {
     vscode,
     fs,
@@ -21,7 +21,7 @@ function createSessionController(deps) {
     getLanguageFeatures,
   } = deps;
 
-  function sameOrigin(a, b) {
+  function sameOrigin(a: any, b: any): boolean {
     try {
       return normalizeOrigin(a) === normalizeOrigin(b);
     } catch {
@@ -29,8 +29,8 @@ function createSessionController(deps) {
     }
   }
 
-  async function ensureSessionEditor(meta) {
-    let doc = vscode.workspace.textDocuments.find((d) => d.uri.fsPath === meta.fsPath);
+  async function ensureSessionEditor(meta: any): Promise<any> {
+    let doc = vscode.workspace.textDocuments.find((d: any) => d.uri.fsPath === meta.fsPath);
     if (!doc) {
       try {
         doc = await vscode.workspace.openTextDocument(vscode.Uri.file(meta.fsPath));
@@ -50,7 +50,7 @@ function createSessionController(deps) {
     return doc;
   }
 
-  async function open(msg, ws, wiki) {
+  async function open(msg: any, ws: any, wiki: any): Promise<void> {
     const root = config().get('tempDir') || defaultDir();
     const dir = wikis.directoryFor(root, wiki);
     await fs.promises.mkdir(dir, {recursive: true});
@@ -89,7 +89,7 @@ function createSessionController(deps) {
     );
   }
 
-  async function finish(msg) {
+  async function finish(msg: any): Promise<void> {
     const meta = sessionManager.get(msg.sessionId);
     if (!meta) return;
     clearDirty(meta.fsPath);
@@ -106,9 +106,9 @@ function createSessionController(deps) {
     );
   }
 
-  async function registerWiki(msg, ws) {
+  async function registerWiki(msg: any, ws: any): Promise<void> {
     const requestId = msg.requestId;
-    const reply = (payload) => {
+    const reply = (payload: any) => {
       try {
         ws.send(JSON.stringify({type: 'wiki-registered', requestId, ...payload}));
       } catch {}
@@ -132,13 +132,13 @@ function createSessionController(deps) {
     }
   }
 
-  function normalizePageName(value) {
+  function normalizePageName(value: any): string {
     return String(value || '').replace(/_/gu, ' ').replace(/\s+/gu, ' ').trim().toLowerCase();
   }
 
-  async function query(msg, ws) {
+  async function query(msg: any, ws: any): Promise<void> {
     const requestId = msg.requestId;
-    const reply = (payload) => {
+    const reply = (payload: any) => {
       try {
         ws.send(JSON.stringify({type: 'session-result', requestId, ...payload}));
       } catch {}
@@ -151,10 +151,10 @@ function createSessionController(deps) {
       const title = normalizePageName(msg.title);
       if (!title) return reply({ok: true, session: null});
       const candidates = sessionManager.entries()
-        .filter(([, meta]) => sameOrigin(meta.wiki.origin, msg.origin)
+        .filter(([, meta]: [string, any]) => sameOrigin(meta.wiki.origin, msg.origin)
           && normalizePageName(meta.title) === title
           && (meta.state !== 'draft' || meta.autoRestore))
-        .sort(([, a], [, b]) => {
+        .sort(([, a]: [string, any], [, b]: [string, any]) => {
           const af = a.section == null ? 0 : 1;
           const bf = b.section == null ? 0 : 1;
           return af - bf || b.created - a.created;
@@ -167,7 +167,7 @@ function createSessionController(deps) {
         }
         let text;
         try {
-          const doc = vscode.workspace.textDocuments.find((d) => d.uri.fsPath === meta.fsPath);
+          const doc = vscode.workspace.textDocuments.find((d: any) => d.uri.fsPath === meta.fsPath);
           text = doc ? doc.getText() : await fs.promises.readFile(meta.fsPath, 'utf8');
         } catch {
           continue;
@@ -184,7 +184,7 @@ function createSessionController(deps) {
       }
       sessionManager.attach(sessionId, ws);
       sessionManager.markAttached(sessionId);
-      const doc = vscode.workspace.textDocuments.find((d) => d.uri.fsPath === meta.fsPath);
+      const doc = vscode.workspace.textDocuments.find((d: any) => d.uri.fsPath === meta.fsPath);
       reply({
         ok: true,
         session: {
@@ -206,9 +206,9 @@ function createSessionController(deps) {
     }
   }
 
-  async function navigate({wiki, title, fragment}) {
+  async function navigate({wiki, title, fragment}: any): Promise<boolean> {
     const meta = sessionManager.values().find(
-      (item) => item.ws && sameOrigin(item.wiki.origin, wiki.origin)
+      (item: any) => item.ws && sameOrigin(item.wiki.origin, wiki.origin)
     );
     if (!meta?.ws || !getBridge()) {
       vscode.window.showWarningMessage('MediaWiki: 浏览器未连接，无法打开目标页面。');
@@ -226,7 +226,7 @@ function createSessionController(deps) {
     }
   }
 
-  async function saveInPage(sessionId, text, summary, minor) {
+  async function saveInPage(sessionId: any, text: any, summary: any, minor: any): Promise<any> {
     const meta = sessionManager.get(sessionId);
     if (!meta?.ws || !getBridge()) {
       vscode.window.showWarningMessage('MediaWiki: 浏览器未连接，无法提交。');
@@ -245,10 +245,10 @@ function createSessionController(deps) {
     }
   }
 
-  async function requestSave(msg) {
+  async function requestSave(msg: any): Promise<void> {
     const meta = sessionManager.get(msg.sessionId);
     if (!meta) return;
-    const doc = vscode.workspace.textDocuments.find((d) => d.uri.fsPath === meta.fsPath);
+    const doc = vscode.workspace.textDocuments.find((d: any) => d.uri.fsPath === meta.fsPath);
     if (!doc) return;
     if (doc.isDirty) await doc.save();
     getBridge()?.broadcast({
@@ -267,7 +267,7 @@ function createSessionController(deps) {
       return;
     }
     const picked = await vscode.window.showQuickPick(
-      drafts.map(([sessionId, meta]) => ({
+      drafts.map(([sessionId, meta]: [string, any]) => ({
         label: meta.title,
         description: meta.section == null ? meta.wiki.name : `${meta.wiki.name} § ${meta.section}`,
         detail: meta.fsPath,
@@ -285,7 +285,7 @@ function createSessionController(deps) {
     vscode.window.showInformationMessage(`MediaWiki: 已恢复 ${picked.meta.title} 的草稿。`);
   }
 
-  function pageUrl(wiki, title) {
+  function pageUrl(wiki: any, title: any): string | undefined {
     const encoded = encodeURIComponent(String(title).replace(/ /gu, '_'))
       .replace(/%2F/giu, '/')
       .replace(/%3A/giu, ':');
