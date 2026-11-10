@@ -3,7 +3,7 @@
   "version": "0.9.0",
   "private": true,
   "type": "module",
-  "module": "./dist/index.BssJWMBS.mjs",
+  "module": "./dist/index.mjs",
   "files": [
     "dist"
   ],
@@ -19,7 +19,7 @@
     ],
     "loader": {
       "kind": "module",
-      "entry": "dist/index.BssJWMBS.mjs",
+      "entry": "dist/index.mjs",
       "main_export": "default"
     }
   }

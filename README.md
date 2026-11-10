@@ -162,4 +162,4 @@ src/extension.ts  激活、命令和编辑器事件
 npm run build:ipe
 ```
 
-该命令会类型检查、用 Vite 生成带内容哈希的 `ipe-plugin/dist/index.<hash>.mjs`，并同步更新 `ipe-plugin/package.json` 与 `ipe-plugin/registry.json` 的 `module` 入口。`ipe-plugin/dist/` 是构建产物，已被 `.gitignore` 排除；发布流程必须在部署前执行 `npm run build:ipe`，并上传生成的 `dist/`。
+该命令会类型检查、用 Vite 生成带内容哈希的 `ipe-plugin/dist/index.<hash>.mjs`，并同步更新 `ipe-plugin/package.json` 与 `ipe-plugin/registry.json` 的 `module` 入口。`ipe-plugin/dist/` 是构建产物，已被 `.gitignore` 排除。推送到 `main` 后，`.github/workflows/pages.yml` 会执行 `npm run build:ipe` 并把 `dist/` 与 `registry.json` 部署到 GitHub Pages。

@@ -4,20 +4,15 @@ import {fileURLToPath} from 'node:url'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const pluginDir = path.join(root, 'ipe-plugin')
-const distDir = path.join(pluginDir, 'dist')
+const entry = 'dist/index.mjs'
 const packagePath = path.join(pluginDir, 'package.json')
 const registryPath = path.join(pluginDir, 'registry.json')
 
-const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'))
-const files = fs
-  .readdirSync(distDir)
-  .filter(file => /^index\.[^.]+\.mjs$/.test(file))
-  .sort()
-if (files.length !== 1) {
-  throw new Error(`expected one hashed entry in ${distDir}, found: ${files.join(', ') || 'none'}`)
+if (!fs.existsSync(path.join(pluginDir, entry))) {
+  throw new Error(`missing build output: ${path.join(pluginDir, entry)}`)
 }
-const entry = `dist/${files[0]}`
 
+const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'))
 pkg.module = `./${entry}`
 pkg.$ipe.loader.entry = entry
 fs.writeFileSync(packagePath, `${JSON.stringify(pkg, null, 2)}\n`)

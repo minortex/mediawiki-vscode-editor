@@ -13,7 +13,7 @@
       "license": "GPL-3.0-or-later",
       "loader": {
         "kind": "module",
-        "entry": "dist/index.BssJWMBS.mjs",
+        "entry": "dist/index.mjs",
         "main_export": "default"
       }
     }

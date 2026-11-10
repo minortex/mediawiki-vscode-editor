@@ -15,7 +15,7 @@ export default defineConfig({
     emptyOutDir: true,
     rollupOptions: {
       output: {
-        entryFileNames: 'index.[hash].mjs',
+        entryFileNames: 'index.mjs',
       },
     },
   },
