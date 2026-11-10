@@ -6,6 +6,7 @@ const os = require('os');
 const fs = require('fs');
 const { startWsServer, broadcast } = require('./lib/ws-server');
 const language = require('./lib/language');
+const wikis = require('./lib/wikis');
 
 let wss = null;
 let statusBar = null;
@@ -283,8 +284,9 @@ async function handleRequestSave(msg) {
   }
 }
 
-async function openSession(msg, ws) {
-  const dir = config().get('tempDir') || defaultDir();
+async function openSession(msg, ws, wiki) {
+  const root = config().get('tempDir') || defaultDir();
+  const dir = wikis.directoryFor(root, wiki);
   await fs.promises.mkdir(dir, { recursive: true });
   const suffix = msg.section != null ? `.s${msg.section}` : '';
   const fsPath = path.join(dir, `${safeName(msg.title)}${suffix}.${stamp()}.wiki`);
@@ -293,24 +295,25 @@ async function openSession(msg, ws) {
   let doc = await vscode.workspace.openTextDocument(vscode.Uri.file(fsPath));
   if (languageFeatures) {
     try {
-      doc = await languageFeatures.apply(doc);
+      doc = await languageFeatures.apply(doc, wiki);
     } catch {}
   }
   await vscode.window.showTextDocument(doc, { preview: false });
-  if (languageFeatures) languageFeatures.check(doc).catch(() => {});
+  if (languageFeatures) languageFeatures.check(doc, wiki).catch(() => {});
 
   sessions.set(msg.sessionId, {
     fsPath,
     ws,
     title: msg.title,
     section: msg.section,
+    wiki,
   });
   byPath.set(fsPath, msg.sessionId);
   wsSessions.get(ws)?.add(msg.sessionId);
 
   const label = msg.section != null ? `${msg.title} § ${msg.section}` : msg.title;
   vscode.window.setStatusBarMessage(
-    `MediaWiki: 正在编辑 ${label}，保存文件即刷新浏览器预览`,
+    `MediaWiki: 正在编辑 ${wiki.name} 的 ${label}，保存文件即刷新浏览器预览`,
     8000
   );
 }
@@ -361,9 +364,16 @@ function saveInPage(sessionId, text, summary, minor) {
   });
 }
 
-function handleMessage(msg, ws) {
+function handleMessage(msg, ws, context) {
   if (msg.type === 'open') {
-    openSession(msg, ws).catch((err) =>
+    const wiki = wikis.resolve(context, msg.wiki, ws.origin);
+    if (!wiki) {
+      vscode.window.showWarningMessage(
+        `MediaWiki: 未注册的 wiki（${msg.wiki || ws.origin || '未知来源'}）。请先运行「MediaWiki: 添加 wiki」。`
+      );
+      return;
+    }
+    openSession(msg, ws, wiki).catch((err) =>
       vscode.window.showErrorMessage(`MediaWiki: ${err.message}`)
     );
   } else if (msg.type === 'finish') {
@@ -397,8 +407,9 @@ function activate(context) {
   wss = startWsServer({
     port,
     allowedOrigin,
-    onMessage: handleMessage,
-    onConnection: (ws) => {
+    onMessage: (msg, ws) => handleMessage(msg, ws, context),
+    onConnection: (ws, req) => {
+      ws.origin = req?.headers?.origin;
       wsSessions.set(ws, new Set());
       ws.on('close', () => {
         const ids = wsSessions.get(ws) || new Set();
@@ -419,6 +430,7 @@ function activate(context) {
 
   context.subscriptions.push(
     statusBar,
+    ...wikis.register(context),
     vscode.commands.registerCommand('mediawikiEditor.push', () => {
       const editor = vscode.window.activeTextEditor;
       if (!editor) {

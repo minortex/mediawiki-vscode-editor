@@ -20,7 +20,7 @@ VSCode --保存--> 浏览器（action=parse 渲染预览）
 1. VSCode 扩展：
 
    ```sh
-   codium --install-extension dist/mediawiki-vscode-editor-0.2.0.vsix
+   codium --install-extension dist/mediawiki-vscode-editor-0.3.0.vsix
    # 或 code --install-extension ...
 
    ```
@@ -40,7 +40,7 @@ VSCode --保存--> 浏览器（action=parse 渲染预览）
 
 - 整页编辑：点右下角按钮，或按 `Alt+E`。
 - 章节编辑：点该节 `[编辑]` 后面的 `VSCode`。
-- VSCode 打开临时文件（默认 `$XDG_CACHE_HOME/mediawiki-edit/<页面名>[.s<节号>].<时间戳>.wiki`，即 `~/.cache/mediawiki-edit`），改完 `Ctrl+S`。
+- VSCode 打开临时文件（默认 `$XDG_CACHE_HOME/mediawiki-edit/<站点主机>/<页面名>[.s<节号>].<时间戳>.wiki`，即 `~/.cache/mediawiki-edit/vcpedia.cn/…`），改完 `Ctrl+S`。
 - 浏览器正文即时变成预览，底部浮条可填编辑摘要、标记小编辑。
 - 点「保存更改」提交；「取消」恢复原页面并丢弃本次会话。
 - 提交冲突（别人先改了）时会提示，取消后重新发起编辑。
@@ -63,9 +63,20 @@ VSCode 设置：
 - `mediawikiEditor.diagnosticsWarnings`：诊断是否包含警告，默认关闭（只报错误）。
 - `mediawikiEditor.diagnosticsDelay`：停止输入后多久执行诊断，默认 400ms。
 - `mediawikiEditor.diagnosticsMaxLength`：超过该字符数不自动诊断、不生成语义高亮，默认 100000；设为 0 不限制。
-- `mediawikiEditor.parserConfig`：解析配置文件的绝对路径或工作区相对路径；留空使用内置 vcpedia 配置。
+- `mediawikiEditor.parserConfig`：内置 VCPedia/未注册文档的解析配置路径；自定义 wiki 使用添加时生成的独立配置。
 
 修改端口时同步改用户脚本顶部的 `WS_URL`。
+
+## 多 wiki
+
+扩展内置 VCPedia；其他站点从命令面板添加：
+
+- `MediaWiki: 添加 wiki`：输入名称和站点地址，自动探测 `/api.php` 或 `/w/api.php`，读取 `siteinfo` 生成该站点的解析配置并注册。
+- `MediaWiki: 列出已添加的 wiki`、`MediaWiki: 删除 wiki`：管理自定义条目；内置 VCPedia 不可删除。
+
+解析配置存放在扩展的 global storage（`wikis/<host>.json`），注册表保存在扩展 globalState。浏览器推送时优先使用消息里的站点地址；InPageEdit 插件发送 `location.origin`，缺失时回退 WebSocket `Origin` 头。未注册的站点会拒绝打开，并提示先添加 wiki。
+
+临时文件按站点主机分目录：`<tempDir>/<host>/<页面名>[.s<节号>].<时间戳>.wiki`。旧根目录下的文件不会自动迁移。
 
 ## 语言功能
 
@@ -122,7 +133,7 @@ https://cdn.jsdelivr.net/gh/minortex/mediawiki-vscode-editor@latest/ipe-plugin/r
 - VSCode 内容变化 → 插件调用 `action=parse` 替换正文，保留页面内预览和光标定位；
 - VSCode 里执行 `MediaWiki: 通过 InPageEdit 保存当前文件` → 插件调用 `wikiPage.edit()`，复用 IPE 的 token、`basetimestamp`、冲突处理和 watchlist。
 
-限制：章节编辑暂时只有预览提示；页面标签栏的原生“编辑”链接不经过 IPE；保存结果在页面状态条显示。
+限制：章节编辑暂时只有预览提示；页面标签栏的原生“编辑”链接不经过 IPE；保存结果在页面状态条显示。插件会把当前页面 origin 作为 wiki 标识发送；换站点时先在命令面板添加对应 wiki。
 
 ## 测试
 

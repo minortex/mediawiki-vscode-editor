@@ -8,7 +8,9 @@
 
   var WS_URL = 'ws://127.0.0.1:8927';
   var RECONNECT_MS = 5000;
-  var API = new URL('/api.php', location.origin).href;
+  var API = window.mw && mw.util && mw.util.wikiScript
+    ? mw.util.wikiScript('api')
+    : new URL('/api.php', location.origin).href;
 
   var socket = null;
   var connected = false;
@@ -488,6 +490,7 @@
       revid: rev && rev.revid,
       basetimestamp: rev && rev.timestamp,
       starttimestamp: new Date().toISOString(),
+      wiki: location.origin,
     });
   }
 
@@ -495,7 +498,7 @@
     if (!session) return;
     var modalSvc = window.ipe && window.ipe.get && window.ipe.get('modal');
     if (!modalSvc) return;
-    fetch('/api.php?action=parse&format=json&formatversion=2&prop=images&page=' + encodeURIComponent(session.title))
+    fetch(API + '?action=parse&format=json&formatversion=2&prop=images&page=' + encodeURIComponent(session.title))
       .then(function (r) { return r.json(); })
       .then(function (d) {
         var images = (d.parse && d.parse.images) || [];
