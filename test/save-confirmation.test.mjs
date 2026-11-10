@@ -112,3 +112,13 @@ test('post-save local edits keep the file as a draft even after confirmation', a
   assert.deepEqual(deleted, []);
   fs.rmSync(dir, {recursive: true, force: true});
 });
+
+test('a failed save keeps the temp file as a draft when the session closes', async () => {
+  const {dir, fsPath, manager, controller, deleted} = fixture();
+  controller.markSaveFailed('s1');
+  await controller.finish({sessionId: 's1', result: 'discarded'});
+  assert.equal(fs.existsSync(fsPath), true);
+  assert.equal(manager.get('s1')?.state, 'draft');
+  assert.deepEqual(deleted, []);
+  fs.rmSync(dir, {recursive: true, force: true});
+});

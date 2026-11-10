@@ -172,6 +172,8 @@ function handleMessage(
     controller.finish(msg).catch(() => {});
   } else if (msg.type === 'save-result' && msg.ok) {
     controller.markSaved(msg.sessionId);
+  } else if (msg.type === 'save-result') {
+    controller.markSaveFailed(msg.sessionId);
   } else if (msg.type === 'save-confirmed') {
     controller.confirmSaved(msg, ws).catch(() => {});
   } else if (msg.type === 'locate') {

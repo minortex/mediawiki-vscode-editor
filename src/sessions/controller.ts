@@ -44,6 +44,7 @@ export interface SessionController {
   open(msg: OpenMessage, ws: SocketLike, wiki: WikiRecord): Promise<void>;
   finish(msg: FinishMessage): Promise<void>;
   markSaved(sessionId: string): void;
+  markSaveFailed(sessionId: string): void;
   confirmSaved(msg: SaveConfirmedMessage, ws: SocketLike): Promise<void>;
   registerWiki(msg: RegisterWikiMessage, ws: SocketLike): Promise<void>;
   query(msg: SessionQueryMessage, ws: SocketLike): Promise<void>;
@@ -87,6 +88,8 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
     clearDirty,
     getLanguageFeatures,
   } = deps;
+
+  const saveFailures = new Set<string>();
 
   async function ensureSessionEditor(
     meta: SessionMeta,
@@ -156,12 +159,23 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
     const meta = sessionManager.get(msg.sessionId);
     if (!meta) return;
     clearDirty(meta.fsPath);
+    if (
+      saveFailures.has(msg.sessionId) &&
+      msg.result !== 'saved'
+    ) {
+      sessionManager.markDraft(msg.sessionId);
+      vscode.window.showWarningMessage(
+        `MediaWiki: 提交未成功，临时文件已保留为草稿：${meta.fsPath}`,
+      );
+      return;
+    }
     if (msg.result !== 'saved' && msg.result !== 'unchanged' && msg.result !== 'discarded') {
       sessionManager.markDraft(msg.sessionId);
       vscode.window.showWarningMessage(`MediaWiki: 编辑会话已断开，临时文件保留：${meta.fsPath}`);
       return;
     }
     if (msg.result === 'saved') {
+      saveFailures.delete(msg.sessionId);
       sessionManager.markAwaitingConfirm(msg.sessionId);
       vscode.window.setStatusBarMessage(
         'MediaWiki: 已提交，等待浏览器确认新内容后清理临时文件',
@@ -169,14 +183,20 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
       );
       return;
     }
+    saveFailures.delete(msg.sessionId);
     sessionManager.remove(msg.sessionId);
     await closeAndDelete(meta.fsPath);
     vscode.window.setStatusBarMessage('MediaWiki: 编辑会话已结束', 5000);
   }
 
   function markSaved(sessionId: string): void {
+    saveFailures.delete(sessionId);
     if (!sessionManager.get(sessionId)) return;
     sessionManager.markAwaitingConfirm(sessionId);
+  }
+
+  function markSaveFailed(sessionId: string): void {
+    if (sessionManager.get(sessionId)) saveFailures.add(sessionId);
   }
 
   async function confirmSaved(msg: SaveConfirmedMessage, ws: SocketLike): Promise<void> {
@@ -192,6 +212,11 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
     };
     const meta = sessionManager.get(msg.sessionId);
     if (!meta) {
+      reply({ok: true});
+      return;
+    }
+    if (saveFailures.has(msg.sessionId)) {
+      sessionManager.markDraft(msg.sessionId, false, true);
       reply({ok: true});
       return;
     }
@@ -482,6 +507,7 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
     open,
     finish,
     markSaved,
+    markSaveFailed,
     confirmSaved,
     registerWiki,
     query,
