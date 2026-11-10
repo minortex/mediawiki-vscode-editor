@@ -7,6 +7,7 @@ const fs = require('fs');
 const { startWsServer, broadcast } = require('./lib/ws-server');
 const language = require('./lib/language');
 const wikis = require('./lib/wikis');
+const { normalizeOrigin } = require('./lib/wiki-config');
 
 let wss = null;
 let statusBar = null;
@@ -17,6 +18,9 @@ const byPath = new Map(); // fsPath -> sessionId
 const wsSessions = new Map(); // ws -> Set<sessionId>
 const dirtyTimers = new Map(); // fsPath -> timeout
 const syncTimers = new Map(); // sessionId -> timeout
+const browserClients = new Set();
+const browserRequests = new Map(); // requestId -> { resolve, reject, timer }
+let browserRequestSeq = 0;
 
 // 只有这些结果代表用户在页面上明确确认过，才允许删除临时文件
 const DELETE_RESULTS = new Set(['saved', 'unchanged', 'discarded']);
@@ -295,11 +299,11 @@ async function openSession(msg, ws, wiki) {
   let doc = await vscode.workspace.openTextDocument(vscode.Uri.file(fsPath));
   if (languageFeatures) {
     try {
-      doc = await languageFeatures.apply(doc, wiki);
+      doc = await languageFeatures.apply(doc, wiki, msg.title);
     } catch {}
   }
   await vscode.window.showTextDocument(doc, { preview: false });
-  if (languageFeatures) languageFeatures.check(doc, wiki).catch(() => {});
+  if (languageFeatures) languageFeatures.check(doc, wiki, msg.title).catch(() => {});
 
   sessions.set(msg.sessionId, {
     fsPath,
@@ -364,8 +368,55 @@ function saveInPage(sessionId, text, summary, minor) {
   });
 }
 
+
+function sameOrigin(a, b) {
+  try {
+    return normalizeOrigin(a) === normalizeOrigin(b);
+  } catch {
+    return false;
+  }
+}
+
+function requestBrowserSiteInfo(address) {
+  const origin = normalizeOrigin(address);
+  const client = [...browserClients].find(
+    (ws) => ws.readyState === 1 && ws.origin && sameOrigin(ws.origin, origin)
+  );
+  if (!client) {
+    return Promise.reject(
+      new Error('请先在目标 wiki 打开任意页面并保持 InPageEdit 插件连接，再添加 wiki')
+    );
+  }
+  const requestId = `siteinfo-${++browserRequestSeq}`;
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      browserRequests.delete(requestId);
+      reject(new Error('浏览器读取站点信息超时'));
+    }, 20000);
+    browserRequests.set(requestId, { resolve, reject, timer });
+    try {
+      client.send(JSON.stringify({ type: 'fetch-siteinfo', requestId, origin }));
+    } catch (error) {
+      clearTimeout(timer);
+      browserRequests.delete(requestId);
+      reject(error);
+    }
+  });
+}
+
 function handleMessage(msg, ws, context) {
-  if (msg.type === 'open') {
+  if (msg.type === 'fetch-siteinfo-result') {
+    const pending = browserRequests.get(msg.requestId);
+    if (pending) {
+      clearTimeout(pending.timer);
+      browserRequests.delete(msg.requestId);
+      if (msg.ok) {
+        pending.resolve(msg.siteinfo);
+      } else {
+        pending.reject(new Error(msg.error || '浏览器读取站点信息失败'));
+      }
+    }
+  } else if (msg.type === 'open') {
     const wiki = wikis.resolve(context, msg.wiki, ws.origin);
     if (!wiki) {
       vscode.window.showWarningMessage(
@@ -410,9 +461,11 @@ function activate(context) {
     onMessage: (msg, ws) => handleMessage(msg, ws, context),
     onConnection: (ws, req) => {
       ws.origin = req?.headers?.origin;
+      browserClients.add(ws);
       wsSessions.set(ws, new Set());
       ws.on('close', () => {
         const ids = wsSessions.get(ws) || new Set();
+        browserClients.delete(ws);
         wsSessions.delete(ws);
         for (const sessionId of ids) {
           finishSession({ sessionId, result: 'disconnected' }).catch(() => {});
@@ -430,7 +483,7 @@ function activate(context) {
 
   context.subscriptions.push(
     statusBar,
-    ...wikis.register(context, () => languageFeatures?.refresh()),
+    ...wikis.register(context, () => languageFeatures?.refresh(), {fetchSiteInfo: requestBrowserSiteInfo}),
     vscode.commands.registerCommand('mediawikiEditor.push', () => {
       const editor = vscode.window.activeTextEditor;
       if (!editor) {

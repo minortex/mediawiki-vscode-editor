@@ -20,7 +20,7 @@ VSCode --保存--> 浏览器（action=parse 渲染预览）
 1. VSCode 扩展：
 
    ```sh
-   codium --install-extension dist/mediawiki-vscode-editor-0.3.0.vsix
+   codium --install-extension dist/mediawiki-vscode-editor-0.4.0.vsix
    # 或 code --install-extension ...
 
    ```
@@ -47,7 +47,7 @@ VSCode --保存--> 浏览器（action=parse 渲染预览）
 
 编辑预览状态下：
 
-- 点正文里的 wiki 内链，会打开新标签并直接进入目标页的编辑预览，同时在 VSCode 打开目标页源码。当前标签的会话保留，可多标签并行。
+- 点正文里的 wiki 内链，会在新标签打开目标页并进入 IPE 编辑态，同时在 VSCode 打开目标页源码。当前标签的会话保留，可多标签并行。
 - 外链、红链、特殊页面、编辑/历史链接不拦截。
 - 取消或关闭浏览器标签时，扩展会关闭对应的 VSCode 编辑器；若文件有未保存修改，VSCode 会弹出自己的保存提示，只有真正关闭后临时文件才删除。
 - 提交成功后编辑器关闭，临时文件删除。
@@ -71,10 +71,10 @@ VSCode 设置：
 
 扩展内置 VCPedia；其他站点从命令面板添加：
 
-- `MediaWiki: 添加 wiki`：输入名称和站点地址，自动探测 `/api.php` 或 `/w/api.php`，读取 `siteinfo` 生成该站点的解析配置并注册。
+- `MediaWiki: 添加 wiki`：先在目标 wiki 打开任意页面并保持 InPageEdit 插件连接；输入名称和站点地址后，扩展通过该浏览器页面读取 `siteinfo`（携带登录态），自动探测 API 路径、生成解析配置并注册。
 - `MediaWiki: 列出已添加的 wiki`、`MediaWiki: 删除 wiki`：管理自定义条目；内置 VCPedia 不可删除。
 
-解析配置存放在扩展的 global storage（`wikis/<host>.json`），注册表保存在扩展 globalState。浏览器推送时优先使用消息里的站点地址；InPageEdit 插件发送 `location.origin`，缺失时回退 WebSocket `Origin` 头。未注册的站点会拒绝打开，并提示先添加 wiki。
+解析配置存放在扩展的 global storage（`wikis/<host>.json`），注册表保存在扩展 globalState。浏览器推送时优先使用消息里的站点地址；InPageEdit 插件发送 `location.origin`，缺失时回退 WebSocket `Origin` 头。未注册的站点会拒绝打开，并提示先添加 wiki。页面内容与 `siteinfo` 都由浏览器带登录态请求，扩展不自行匿名抓取页面。
 
 临时文件按站点主机分目录：`<tempDir>/<host>/<页面名>[.s<节号>].<时间戳>.wiki`。旧根目录下的文件不会自动迁移。
 
@@ -87,6 +87,7 @@ VSCode 设置：
 - 折叠、大纲、补全、Hover、解析函数签名帮助、颜色预览、Inlay hints。
 - 模板参数/魔术字的当前文档内重命名、引用和高亮。
 - 外部链接与 wiki 内链可点击。
+- 模板、模块和内链目标支持 `跳转到定义`：浏览器打开目标页并进入 IPE 编辑态，扩展随后打开对应临时文件供编辑。目标页内容由浏览器携带登录态获取，扩展不自行匿名请求。
 
 诊断在输入后防抖执行；超大文档默认跳过自动诊断，可用 `MediaWiki: 重新检查当前文件` 手动触发。解析配置随扩展打包为 `config/vcpedia.json`，由 `scripts/build-vcpedia-config.mjs` 从站点 `siteinfo` API 生成，不执行站点脚本；需要重新生成时运行：
 
@@ -94,7 +95,7 @@ VSCode 设置：
 node scripts/build-vcpedia-config.mjs
 ```
 
-语言功能是单文件分析：不会抓取远端页面，因此不提供跨页面的模板/模块定义跳转；`跳转到定义` 目前支持 `<ref name>` 到引用列表，引用/重命名也限于当前文档。章节编辑的临时文件只包含该节文本，页面级规则可能不适用。
+语言功能本身是单文件分析：模板/模块/内链跳转通过浏览器打开目标页完成，扩展不抓取页面；`<ref name>` 的定义跳转仍在当前文档内。引用与重命名限于当前文档，暂不提供全站反向引用索引。章节编辑的临时文件只包含该节文本，页面级规则可能不适用。
 
 编辑器唤起协议默认 `vscodium://`。如果用的是 VS Code，在 mediawiki 页面的控制台执行一次：
 
@@ -133,7 +134,7 @@ https://cdn.jsdelivr.net/gh/minortex/mediawiki-vscode-editor@latest/ipe-plugin/r
 - VSCode 内容变化 → 插件调用 `action=parse` 替换正文，保留页面内预览和光标定位；
 - VSCode 里执行 `MediaWiki: 通过 InPageEdit 保存当前文件` → 插件调用 `wikiPage.edit()`，复用 IPE 的 token、`basetimestamp`、冲突处理和 watchlist。
 
-限制：章节编辑暂时只有预览提示；页面标签栏的原生“编辑”链接不经过 IPE；保存结果在页面状态条显示。插件会把当前页面 origin 作为 wiki 标识发送；换站点时先在命令面板添加对应 wiki。
+限制：章节编辑暂时只有预览提示；页面标签栏的原生“编辑”链接不经过 IPE；保存结果在页面状态条显示。插件会把当前页面 origin 作为 wiki 标识发送；换站点时先在命令面板添加对应 wiki。定义跳转和预览蓝链依赖插件识别 `vcpe-edit=1` 参数并自动进入 IPE 编辑态。
 
 ## 测试
 

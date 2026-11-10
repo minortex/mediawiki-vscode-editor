@@ -157,6 +157,61 @@
   }
 
   // ---------- websocket ----------
+  function fetchSiteInfoForExtension(msg) {
+    var requested;
+    try {
+      requested = new URL(msg.origin).origin;
+    } catch (e) {
+      send({type: 'fetch-siteinfo-result', requestId: msg.requestId, ok: false, error: '无效的站点地址'});
+      return;
+    }
+    if (requested !== location.origin) {
+      send({
+        type: 'fetch-siteinfo-result',
+        requestId: msg.requestId,
+        ok: false,
+        error: '浏览器当前页面是 ' + location.origin + '，请先打开目标 wiki 的页面'
+      });
+      return;
+    }
+    var params = {
+      action: 'query',
+      meta: 'siteinfo',
+      siprop: 'general|namespaces|namespacealiases|magicwords|functionhooks|extensiontags|variables|interwikimap',
+      format: 'json',
+      formatversion: '2',
+    };
+    var controller = typeof AbortController === 'function' ? new AbortController() : null;
+    var timer = controller ? setTimeout(function () { controller.abort(); }, 20000) : null;
+    fetch(API + '?' + new URLSearchParams(params), {
+      credentials: 'include',
+      signal: controller ? controller.signal : undefined,
+    })
+      .then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function (data) {
+        if (data.error) throw new Error(data.error.code + ': ' + data.error.info);
+        if (!data.query || !data.query.general) throw new Error('站点没有返回 siteinfo');
+        send({
+          type: 'fetch-siteinfo-result',
+          requestId: msg.requestId,
+          ok: true,
+          siteinfo: {origin: location.origin, api: API, query: data.query},
+        });
+      })
+      .catch(function (e) {
+        send({
+          type: 'fetch-siteinfo-result',
+          requestId: msg.requestId,
+          ok: false,
+          error: (e && e.message) || String(e),
+        });
+      })
+      .finally(function () { if (timer) clearTimeout(timer); });
+  }
+
   function connect() {
     if (socket && socket.readyState <= 1) return;
     socket = new WebSocket(WS_URL);
@@ -169,6 +224,10 @@
     socket.addEventListener('message', function (ev) {
       var msg;
       try { msg = JSON.parse(ev.data); } catch (e) { return; }
+      if (msg.type === 'fetch-siteinfo') {
+        fetchSiteInfoForExtension(msg);
+        return;
+      }
       if (!session || msg.sessionId !== session.id) return;
       if (msg.type === 'update') {
         session.text = msg.text;
@@ -333,6 +392,28 @@
       }
     }
     return false;
+  }
+
+  function editUrlFor(href) {
+    try {
+      var url = new URL(href, location.href);
+      url.searchParams.set('vcpe-edit', '1');
+      return url.href;
+    } catch (e) {
+      return href;
+    }
+  }
+
+  function consumeAutoEdit() {
+    var url = new URL(location.href);
+    if (url.searchParams.get('vcpe-edit') !== '1') return null;
+    var section = url.searchParams.get('vcpe-section');
+    url.searchParams.delete('vcpe-edit');
+    url.searchParams.delete('vcpe-section');
+    try {
+      history.replaceState(null, '', url.pathname + url.search + url.hash);
+    } catch (e) {}
+    return {section: section == null || section === '' ? undefined : Number(section)};
   }
 
   function isArticleLink(a) {
@@ -610,7 +691,7 @@
     if (a) {
       if (!isArticleLink(a)) return;
       e.preventDefault();
-      window.open(a.href, '_blank', 'noopener');
+      window.open(editUrlFor(a.href), '_blank', 'noopener');
       return;
     }
     var text = textAtPoint(e.clientX, e.clientY);
@@ -637,6 +718,19 @@
         });
       },
     });
+    var autoEdit = consumeAutoEdit();
+    if (autoEdit) {
+      setTimeout(function () {
+        try {
+          var title = window.mw && mw.config && mw.config.get('wgPageName');
+          if (!title) throw new Error('无法读取当前页面标题');
+          if (typeof ipeCtx.quickEdit !== 'function') throw new Error('InPageEdit 缺少 quickEdit');
+          ipeCtx.quickEdit({title: title, section: autoEdit.section});
+        } catch (e) {
+          status('自动进入编辑失败：' + ((e && e.message) || e), 'error');
+        }
+      }, 0);
+    }
   }
 
   if (window.ipe) {
