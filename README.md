@@ -20,7 +20,7 @@ VSCode --保存--> 浏览器（action=parse 渲染预览）
 1. VSCode 扩展：
 
    ```sh
-   codium --install-extension dist/mediawiki-vscode-editor-0.1.0.vsix
+   codium --install-extension dist/mediawiki-vscode-editor-0.2.0.vsix
    # 或 code --install-extension ...
 
    ```
@@ -59,8 +59,31 @@ VSCode 设置：
 - `mediawikiEditor.port`：本地 WebSocket 端口，默认 `8927`。
 - `mediawikiEditor.tempDir`：源码落盘目录，默认用户缓存目录 `$XDG_CACHE_HOME/mediawiki-edit`（macOS 为 `~/Library/Caches/mediawiki-edit`，Windows 为 `%LOCALAPPDATA%\mediawiki-edit`）。断电或重启后文件仍在；需要更持久的归档可改到 `~/.local/share`。
 - `mediawikiEditor.allowedOrigin`：允许连接的浏览器来源，默认 `*`（不限制）；填单个 origin 可限制。
+- `mediawikiEditor.languageFeatures`：是否启用内建语言功能，默认开启。
+- `mediawikiEditor.diagnosticsWarnings`：诊断是否包含警告，默认关闭（只报错误）。
+- `mediawikiEditor.diagnosticsDelay`：停止输入后多久执行诊断，默认 400ms。
+- `mediawikiEditor.diagnosticsMaxLength`：超过该字符数不自动诊断、不生成语义高亮，默认 100000；设为 0 不限制。
+- `mediawikiEditor.parserConfig`：解析配置文件的绝对路径或工作区相对路径；留空使用内置 vcpedia 配置。
 
 修改端口时同步改用户脚本顶部的 `WS_URL`。
+
+## 语言功能
+
+临时文件以 `mediawiki-wikitext` 语言打开，扩展内建由 `wikiparser-node` 驱动的语言功能：
+
+- 语法诊断：只报错误，可开启警告；错误处可应用快速修复。
+- 语法高亮：基于 TextMate 语法；另有语义高亮补充模板名、参数名、魔术字、链接目标等。
+- 折叠、大纲、补全、Hover、解析函数签名帮助、颜色预览、Inlay hints。
+- 模板参数/魔术字的当前文档内重命名、引用和高亮。
+- 外部链接与 wiki 内链可点击。
+
+诊断在输入后防抖执行；超大文档默认跳过自动诊断，可用 `MediaWiki: 重新检查当前文件` 手动触发。解析配置随扩展打包为 `config/vcpedia.json`，由 `scripts/build-vcpedia-config.mjs` 从站点 `siteinfo` API 生成，不执行站点脚本；需要重新生成时运行：
+
+```sh
+node scripts/build-vcpedia-config.mjs
+```
+
+语言功能是单文件分析：不会抓取远端页面，因此不提供跨页面的模板/模块定义跳转；`跳转到定义` 目前支持 `<ref name>` 到引用列表，引用/重命名也限于当前文档。章节编辑的临时文件只包含该节文本，页面级规则可能不适用。
 
 编辑器唤起协议默认 `vscodium://`。如果用的是 VS Code，在 mediawiki 页面的控制台执行一次：
 

@@ -1,0 +1,458 @@
+{
+  "name": "MediaWiki Wikitext",
+  "scopeName": "source.mediawiki",
+  "fileTypes": [
+    "wiki",
+    "mediawiki",
+    "wikitext",
+    "wt"
+  ],
+  "patterns": [
+    {
+      "include": "#comment"
+    },
+    {
+      "include": "#raw-tag"
+    },
+    {
+      "include": "#self-closing-tag"
+    },
+    {
+      "include": "#void-tag"
+    },
+    {
+      "include": "#extension-tag"
+    },
+    {
+      "include": "#parser-function"
+    },
+    {
+      "include": "#template"
+    },
+    {
+      "include": "#link"
+    },
+    {
+      "include": "#heading"
+    },
+    {
+      "include": "#table"
+    },
+    {
+      "include": "#list"
+    },
+    {
+      "include": "#horizontal-rule"
+    },
+    {
+      "include": "#bold-italic"
+    },
+    {
+      "include": "#external-link"
+    },
+    {
+      "include": "#bare-url"
+    },
+    {
+      "include": "#signature"
+    },
+    {
+      "include": "#html-tag"
+    },
+    {
+      "include": "#magic-word"
+    }
+  ],
+  "repository": {
+    "comment": {
+      "begin": "<!--",
+      "end": "-->",
+      "name": "comment.block.mediawiki",
+      "beginCaptures": {
+        "0": {
+          "name": "punctuation.definition.comment.begin.mediawiki"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.comment.end.mediawiki"
+        }
+      }
+    },
+    "raw-tag": {
+      "begin": "<(nowiki|pre|syntaxhighlight|source)(\\s[^>]*)?>",
+      "end": "</(nowiki|pre|syntaxhighlight|source)>",
+      "name": "meta.tag.raw.mediawiki",
+      "beginCaptures": {
+        "1": {
+          "name": "entity.name.tag.mediawiki"
+        },
+        "2": {
+          "patterns": [
+            {
+              "include": "#tag-attributes"
+            }
+          ]
+        }
+      },
+      "endCaptures": {
+        "1": {
+          "name": "entity.name.tag.mediawiki"
+        }
+      },
+      "contentName": "markup.raw.block.mediawiki"
+    },
+    "extension-tag": {
+      "begin": "<([a-zA-Z][\\w-]*)(\\s[^>]*)?>",
+      "end": "</([a-zA-Z][\\w-]*)>",
+      "name": "meta.tag.extension.mediawiki",
+      "beginCaptures": {
+        "1": {
+          "name": "entity.name.tag.mediawiki"
+        },
+        "2": {
+          "patterns": [
+            {
+              "include": "#tag-attributes"
+            }
+          ]
+        }
+      },
+      "endCaptures": {
+        "1": {
+          "name": "entity.name.tag.mediawiki"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#comment"
+        },
+        {
+          "include": "#template"
+        },
+        {
+          "include": "#link"
+        },
+        {
+          "include": "#bold-italic"
+        }
+      ]
+    },
+    "html-tag": {
+      "match": "</?([a-zA-Z][\\w-]*)(\\s[^>]*)?/?>",
+      "name": "meta.tag.html.mediawiki",
+      "captures": {
+        "1": {
+          "name": "entity.name.tag.mediawiki"
+        },
+        "2": {
+          "patterns": [
+            {
+              "include": "#tag-attributes"
+            }
+          ]
+        }
+      }
+    },
+    "tag-attributes": {
+      "patterns": [
+        {
+          "match": "([\\w:-]+)\\s*=\\s*(\"([^\"]*)\"|'([^']*)')",
+          "captures": {
+            "1": {
+              "name": "entity.other.attribute-name.mediawiki"
+            },
+            "2": {
+              "name": "string.quoted.mediawiki"
+            }
+          }
+        },
+        {
+          "match": "[\\w:-]+",
+          "name": "entity.other.attribute-name.mediawiki"
+        }
+      ]
+    },
+    "template": {
+      "begin": "(\\{\\{)\\s*([^|{}\\n]+)",
+      "end": "\\}\\}",
+      "name": "meta.template.mediawiki",
+      "beginCaptures": {
+        "1": {
+          "name": "punctuation.definition.template.begin.mediawiki"
+        },
+        "2": {
+          "name": "entity.name.function.template.mediawiki"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.template.end.mediawiki"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#comment"
+        },
+        {
+          "match": "\\|\\s*([^=|{}\\n]+?)\\s*=",
+          "captures": {
+            "1": {
+              "name": "variable.parameter.mediawiki"
+            }
+          }
+        },
+        {
+          "include": "#template"
+        },
+        {
+          "include": "#link"
+        },
+        {
+          "include": "#bold-italic"
+        },
+        {
+          "include": "#magic-word"
+        }
+      ]
+    },
+    "link": {
+      "begin": "\\[\\[",
+      "end": "\\]\\]",
+      "name": "meta.link.mediawiki",
+      "beginCaptures": {
+        "0": {
+          "name": "punctuation.definition.link.begin.mediawiki"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.link.end.mediawiki"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#comment"
+        },
+        {
+          "match": "([^|\\]\\n]+)",
+          "captures": {
+            "1": {
+              "name": "string.other.link.target.mediawiki"
+            }
+          }
+        },
+        {
+          "match": "\\|",
+          "name": "punctuation.separator.link.mediawiki"
+        },
+        {
+          "include": "#template"
+        },
+        {
+          "include": "#bold-italic"
+        }
+      ]
+    },
+    "heading": {
+      "match": "^(={1,6})\\s*(.*?)\\s*\\1\\s*$",
+      "name": "markup.heading.mediawiki",
+      "captures": {
+        "1": {
+          "name": "punctuation.definition.heading.mediawiki"
+        },
+        "2": {
+          "name": "entity.name.section.mediawiki"
+        }
+      }
+    },
+    "table": {
+      "begin": "^\\s*\\{\\|",
+      "end": "^\\s*\\|\\}",
+      "name": "meta.table.mediawiki",
+      "patterns": [
+        {
+          "include": "#table-row"
+        },
+        {
+          "include": "#table-cell"
+        },
+        {
+          "include": "#template"
+        },
+        {
+          "include": "#link"
+        },
+        {
+          "include": "#bold-italic"
+        }
+      ]
+    },
+    "table-row": {
+      "match": "^\\s*\\|-.*$",
+      "name": "meta.table.row.mediawiki",
+      "captures": {
+        "0": {
+          "name": "punctuation.definition.table.row.mediawiki"
+        }
+      }
+    },
+    "table-cell": {
+      "match": "^(\\s*[!|])([^|].*)?$",
+      "name": "meta.table.cell.mediawiki",
+      "captures": {
+        "1": {
+          "name": "punctuation.definition.table.cell.mediawiki"
+        },
+        "2": {
+          "patterns": [
+            {
+              "include": "#template"
+            },
+            {
+              "include": "#link"
+            }
+          ]
+        }
+      }
+    },
+    "list": {
+      "match": "^\\s*([*#:;]+)\\s*",
+      "captures": {
+        "1": {
+          "name": "punctuation.definition.list.mediawiki"
+        }
+      }
+    },
+    "horizontal-rule": {
+      "match": "^----+\\s*$",
+      "name": "meta.separator.mediawiki"
+    },
+    "bold-italic": {
+      "patterns": [
+        {
+          "begin": "'''''",
+          "end": "'''''",
+          "name": "markup.bold.italic.mediawiki"
+        },
+        {
+          "begin": "'''",
+          "end": "'''",
+          "name": "markup.bold.mediawiki"
+        },
+        {
+          "begin": "''",
+          "end": "''",
+          "name": "markup.italic.mediawiki"
+        }
+      ]
+    },
+    "external-link": {
+      "match": "(?<!\\[)\\[(\\w+://[^\\s\\]]+)(?:\\s+([^\\]]*))?\\]",
+      "name": "markup.underline.link.mediawiki",
+      "captures": {
+        "1": {
+          "name": "string.other.link.url.mediawiki"
+        },
+        "2": {
+          "name": "string.other.link.title.mediawiki"
+        }
+      }
+    },
+    "bare-url": {
+      "match": "\\b(?:https?|ftp)://[^\\s\\[\\]<>\"']+",
+      "name": "markup.underline.link.mediawiki"
+    },
+    "signature": {
+      "match": "~{3,5}",
+      "name": "variable.other.signature.mediawiki"
+    },
+    "magic-word": {
+      "patterns": [
+        {
+          "match": "__[A-Z][A-Z0-9_]*__",
+          "name": "keyword.control.behavior-switch.mediawiki"
+        },
+        {
+          "match": "\\{\\{\\s*[A-Z][A-Z0-9_]*\\s*\\}\\}",
+          "name": "variable.other.magic-word.mediawiki"
+        }
+      ]
+    },
+    "self-closing-tag": {
+      "match": "<([a-zA-Z][\\w-]*)(\\s[^>]*)?/>",
+      "name": "meta.tag.self-closing.mediawiki",
+      "captures": {
+        "1": {
+          "name": "entity.name.tag.mediawiki"
+        },
+        "2": {
+          "patterns": [
+            {
+              "include": "#tag-attributes"
+            }
+          ]
+        }
+      }
+    },
+    "void-tag": {
+      "match": "<(br|hr|wbr|meta|link|img|input)(\\s[^>]*)?>",
+      "name": "meta.tag.void.mediawiki",
+      "captures": {
+        "1": {
+          "name": "entity.name.tag.mediawiki"
+        },
+        "2": {
+          "patterns": [
+            {
+              "include": "#tag-attributes"
+            }
+          ]
+        }
+      }
+    },
+    "parser-function": {
+      "begin": "(\\{\\{)\\s*([#＃])([^\\s|:}]+)",
+      "beginCaptures": {
+        "1": {
+          "name": "punctuation.definition.template.begin.mediawiki"
+        },
+        "2": {
+          "name": "keyword.operator.parser-function.mediawiki"
+        },
+        "3": {
+          "name": "entity.name.function.template.mediawiki"
+        }
+      },
+      "end": "(\\}\\})",
+      "endCaptures": {
+        "1": {
+          "name": "punctuation.definition.template.end.mediawiki"
+        }
+      },
+      "name": "meta.template.parser-function.mediawiki",
+      "patterns": [
+        {
+          "match": "\\|\\s*([^=|{}\\n]+?)\\s*=",
+          "captures": {
+            "1": {
+              "name": "variable.parameter.mediawiki"
+            }
+          }
+        },
+        {
+          "include": "#template"
+        },
+        {
+          "include": "#link"
+        },
+        {
+          "include": "#bold-italic"
+        },
+        {
+          "include": "#magic-word"
+        }
+      ]
+    }
+  }
+}

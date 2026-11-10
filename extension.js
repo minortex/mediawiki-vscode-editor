@@ -5,9 +5,11 @@ const path = require('path');
 const os = require('os');
 const fs = require('fs');
 const { startWsServer, broadcast } = require('./lib/ws-server');
+const language = require('./lib/language');
 
 let wss = null;
 let statusBar = null;
+let languageFeatures = null;
 
 const sessions = new Map(); // sessionId -> { fsPath, ws, title, section }
 const byPath = new Map(); // fsPath -> sessionId
@@ -288,8 +290,14 @@ async function openSession(msg, ws) {
   const fsPath = path.join(dir, `${safeName(msg.title)}${suffix}.${stamp()}.wiki`);
 
   await fs.promises.writeFile(fsPath, msg.text, 'utf8');
-  const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(fsPath));
+  let doc = await vscode.workspace.openTextDocument(vscode.Uri.file(fsPath));
+  if (languageFeatures) {
+    try {
+      doc = await languageFeatures.apply(doc);
+    } catch {}
+  }
   await vscode.window.showTextDocument(doc, { preview: false });
+  if (languageFeatures) languageFeatures.check(doc).catch(() => {});
 
   sessions.set(msg.sessionId, {
     fsPath,
@@ -384,6 +392,8 @@ function activate(context) {
   const port = config().get('port');
   const allowedOrigin = config().get('allowedOrigin');
 
+  languageFeatures = language.registerLanguageFeatures(context);
+
   wss = startWsServer({
     port,
     allowedOrigin,
@@ -450,6 +460,20 @@ function activate(context) {
         vscode.window.showErrorMessage(`MediaWiki: 保存失败：${result.error}`);
       }
     }),
+    vscode.commands.registerCommand('mediawikiEditor.check', async () => {
+      const editor = vscode.window.activeTextEditor;
+      if (!editor) {
+        vscode.window.showInformationMessage('MediaWiki: 当前没有打开的文件。');
+        return;
+      }
+      if (!languageFeatures) return;
+      try {
+        const document = await languageFeatures.apply(editor.document);
+        await languageFeatures.check(document);
+      } catch (error) {
+        vscode.window.showErrorMessage(`MediaWiki: 语言检查失败：${error.message}`);
+      }
+    }),
     vscode.commands.registerCommand('mediawikiEditor.status', () => {
       const connected = wss
         ? [...wss.clients].filter((c) => c.readyState === 1).length
@@ -512,6 +536,8 @@ function activate(context) {
 }
 
 function deactivate() {
+  languageFeatures?.dispose();
+  languageFeatures = null;
   if (wss) {
     for (const client of wss.clients) client.terminate();
     wss.close();

@@ -2,7 +2,7 @@
   "name": "mediawiki-vscode-editor",
   "displayName": "MediaWiki ⇄ VSCode External Editor",
   "description": "Edit MediaWiki pages in VSCode; the browser previews on save and performs the edit",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "local",
   "license": "MIT",
   "engines": {
@@ -14,7 +14,8 @@
   "main": "./extension.js",
   "activationEvents": [
     "onStartupFinished",
-    "onUri"
+    "onUri",
+    "onLanguage:mediawiki-wikitext"
   ],
   "contributes": {
     "commands": [
@@ -29,6 +30,10 @@
       {
         "command": "mediawikiEditor.save",
         "title": "MediaWiki: 通过 InPageEdit 保存当前文件"
+      },
+      {
+        "command": "mediawikiEditor.check",
+        "title": "MediaWiki: 重新检查当前文件"
       }
     ],
     "configuration": {
@@ -48,9 +53,54 @@
           "type": "string",
           "default": "*",
           "description": "允许连接的浏览器来源；`*` 表示不限制，也可填单个 origin（如 https://example.org）。"
+        },
+        "mediawikiEditor.languageFeatures": {
+          "type": "boolean",
+          "default": true,
+          "description": "为编辑会话启用内建语言功能（诊断、折叠、补全、跳转等）。"
+        },
+        "mediawikiEditor.diagnosticsWarnings": {
+          "type": "boolean",
+          "default": false,
+          "description": "诊断中是否包含警告；关闭时只显示错误。"
+        },
+        "mediawikiEditor.diagnosticsDelay": {
+          "type": "number",
+          "default": 400,
+          "description": "停止输入后等待多少毫秒再执行诊断。"
+        },
+        "mediawikiEditor.diagnosticsMaxLength": {
+          "type": "number",
+          "default": 100000,
+          "description": "超过该字符数的文档不自动诊断、不生成语义高亮；设为 0 表示不限制。"
+        },
+        "mediawikiEditor.parserConfig": {
+          "type": "string",
+          "default": "",
+          "description": "解析配置 JSON 的绝对路径或相对工作区路径；留空使用内置 vcpedia 配置。"
         }
       }
-    }
+    },
+    "languages": [
+      {
+        "id": "mediawiki-wikitext",
+        "aliases": [
+          "MediaWiki Wikitext",
+          "Wikitext"
+        ],
+        "extensions": [
+          ".wiki"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "mediawiki-wikitext",
+        "scopeName": "source.mediawiki",
+        "path": "./syntaxes/mediawiki.tmLanguage.json"
+      }
+    ]
   },
   "dependencies": {
     "opencc-js": "^1.4.2",
