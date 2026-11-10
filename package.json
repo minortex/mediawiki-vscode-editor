@@ -2,9 +2,9 @@
   "name": "mediawiki-vscode-editor",
   "displayName": "MediaWiki ⇄ VSCode External Editor",
   "description": "Edit MediaWiki pages in VSCode; the browser previews on save and performs the edit",
-  "version": "0.8.1",
+  "version": "0.9.0",
   "publisher": "local",
-  "license": "MIT",
+  "license": "GPL-3.0-or-later",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -121,5 +121,16 @@
     "opencc-js": "^1.4.2",
     "wikiparser-node": "^2.1.0",
     "ws": "^8.22.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/vscode": "^1.85.0",
+    "@types/ws": "^8.18.2",
+    "typescript": "^7.0.2"
+  },
+  "scripts": {
+    "compile": "tsc -p tsconfig.json",
+    "watch": "tsc -w -p tsconfig.json",
+    "vscode:prepublish": "npm run compile"
   }
 }

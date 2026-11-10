@@ -20,7 +20,7 @@ VSCode --保存--> 浏览器（action=parse 渲染预览）
 1. VSCode 扩展：
 
    ```sh
-   codium --install-extension dist/mediawiki-vscode-editor-0.8.1.vsix
+   codium --install-extension dist/mediawiki-vscode-editor-0.9.0.vsix
    # 或 code --install-extension ...
 
    ```
@@ -144,3 +144,7 @@ WIKI_URL=https://example.org BROWSER_PORT=9222 node test/survey.mjs
 - 除内联脚本外，页面级 gadget 不会重新初始化，依赖它们的交互仍可能不作用于草稿。
 - 提交完全由浏览器完成，扩展不接触账号密码。
 - 章节编辑只把该节文本送到 VSCode，提交时使用 `section=N`，由 MediaWiki 拼回整页；冲突检测仍基于整页 `basetimestamp`。
+
+## 开发
+
+修改 TypeScript 后运行 `npm run compile`；打包 VSIX 时 `vscode:prepublish` 会自动编译到 `out/`。

@@ -8,12 +8,12 @@ const { startWsServer, broadcast } = require('./lib/ws-server');
 const language = require('./lib/language');
 const wikis = require('./lib/wikis');
 const { normalizeOrigin } = require('./lib/wiki-config');
+const { SessionStore } = require('./out/session-store');
 
 let wss = null;
 let statusBar = null;
 let languageFeatures = null;
-let extensionContext = null;
-let persistChain = Promise.resolve();
+let sessionStore = null;
 
 const sessions = new Map(); // sessionId -> { fsPath, ws, title, section }
 const byPath = new Map(); // fsPath -> sessionId
@@ -28,10 +28,6 @@ const DELETE_RESULTS = new Set(['saved', 'unchanged', 'discarded']);
 
 function config() {
   return vscode.workspace.getConfiguration('mediawikiEditor');
-}
-
-function sessionStoreFile(context) {
-  return context?.globalStorageUri ? path.join(context.globalStorageUri.fsPath, 'sessions.json') : undefined;
 }
 
 function serializeSession(sessionId, meta) {
@@ -51,37 +47,13 @@ function serializeSession(sessionId, meta) {
 }
 
 function persistSessions() {
-  if (!extensionContext) return;
-  const file = sessionStoreFile(extensionContext);
-  if (!file) return;
-  const data = JSON.stringify(
-    [...sessions].map(([sessionId, meta]) => serializeSession(sessionId, meta)),
-    null,
-    2
-  );
-  persistChain = persistChain
-    .then(async () => {
-      await fs.promises.mkdir(path.dirname(file), {recursive: true});
-      const tmp = `${file}.tmp`;
-      await fs.promises.writeFile(tmp, `${data}\n`, 'utf8');
-      await fs.promises.rename(tmp, file);
-    })
-    .catch(() => {});
+  if (!sessionStore) return;
+  sessionStore.save([...sessions].map(([sessionId, meta]) => serializeSession(sessionId, meta)));
 }
 
-function loadSessions(context) {
-  const file = sessionStoreFile(context);
-  if (!file) return;
-  let entries;
-  try {
-    entries = JSON.parse(fs.readFileSync(file, 'utf8'));
-  } catch {
-    return;
-  }
-  if (!Array.isArray(entries)) return;
-  for (const entry of entries) {
-    if (!entry?.sessionId || !entry.fsPath || !entry.wiki?.origin) continue;
-    if (!fs.existsSync(entry.fsPath)) continue;
+function loadSessions() {
+  if (!sessionStore) return;
+  for (const entry of sessionStore.load()) {
     sessions.set(entry.sessionId, {
       fsPath: entry.fsPath,
       ws: null,
@@ -701,8 +673,10 @@ function activate(context) {
   const port = config().get('port');
   const allowedOrigin = config().get('allowedOrigin');
 
-  extensionContext = context;
-  loadSessions(context);
+  sessionStore = new SessionStore(
+    context.globalStorageUri ? path.join(context.globalStorageUri.fsPath, 'sessions.json') : undefined
+  );
+  loadSessions();
   languageFeatures = language.registerLanguageFeatures(context, {navigateEdit: requestBrowserNavigate});
 
   wss = startWsServer({

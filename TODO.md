@@ -7,12 +7,12 @@
 - [x] 删除已过期、只实现旧协议的 `scripts/mock-server.js`。
 - [x] `.vscodeignore` 排除 `test/`、`scripts/`、`ipe-plugin/`、`TODO.md`。
 - [x] 更新 README 的浏览器端安装方式。
-- [ ] 明确项目许可证。当前运行时分发 GPL-3.0-or-later 的 `wikiparser-node`，不能继续按纯 MIT 处理。
+- [x] 明确项目许可证：GPL-3.0-or-later，已添加 `LICENSE`。
 
 ## P1 拆分职责
 
-- [ ] 抽出 `protocol`：WebSocket 消息、状态枚举、请求/响应类型。
-- [ ] 抽出 `session-store`：`sessions.json` 的读取、原子写入、草稿恢复。
+- [x] 抽出 `protocol`：WebSocket 消息、状态枚举、请求/响应类型（`src/protocol.ts`）。
+- [x] 抽出 `session-store`：`sessions.json` 的读取、原子写入（`src/session-store.ts`）。
 - [ ] 抽出 `session-manager`：`attached` / `detached` / `draft` / `closed` 状态机。
 - [ ] 抽出 `browser-bridge`：注册、attach/detach、navigate、心跳和请求等待。
 - [ ] `extension.js` 只保留激活、命令和事件绑定。
@@ -21,8 +21,9 @@
 
 ## P2 迁移 TypeScript
 
-- [ ] 添加 `tsconfig`（strict、CommonJS、`outDir`）。
-- [ ] 先迁 `protocol`、`session-store`、`session-manager`、`wiki`。
+- [x] 添加 TypeScript 工具链（`tsconfig.json`，Node16/CJS 输出到 `out/`）。
+- [x] 先迁 `protocol`、`session-store`。
+- [ ] 迁 `session-manager`、`wiki`。
 - [ ] 再迁 `extension`、`lib/language`。
 - [ ] 保持 `node_modules` 外部依赖，不对 `wikiparser-node` 做单文件打包。
 - [ ] 浏览器端 IPE 插件继续使用 JavaScript。
