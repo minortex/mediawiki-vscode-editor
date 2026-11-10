@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MediaWiki ⇄ VSCode 外部编辑器
 // @namespace    mediawiki-vscode-editor
-// @version      0.3.3
+// @version      0.3.4
 // @description  在 vcpedia.cn 上发起编辑，用 VSCode 改，保存即预览，浏览器内提交
 // @match        https://vcpedia.cn/*
 // @grant        none
@@ -12,7 +12,7 @@
 (() => {
   'use strict';
 
-  console.info('[mediawiki-vscode] userscript 0.3.3 loaded');
+  console.info('[mediawiki-vscode] userscript 0.3.4 loaded');
 
   const WS_URL = 'ws://127.0.0.1:8927';
   const RECONNECT_MS = 1000;
@@ -738,7 +738,7 @@
           if (!isArticleLink(a)) return;
           e.preventDefault();
           const url = new URL(a.href, location.href);
-          url.searchParams.set('vcpe-edit', '1');
+          url.searchParams.set('external-editor', '1');
           window.open(url.toString(), '_blank', 'noopener');
           return;
         }
@@ -769,9 +769,9 @@
     });
 
     // 由链接跳转打开的新标签，自动进入编辑预览
-    if (new URLSearchParams(location.search).get('vcpe-edit') === '1') {
+    if (new URLSearchParams(location.search).get('external-editor') === '1') {
       const u = new URL(location.href);
-      u.searchParams.delete('vcpe-edit');
+      u.searchParams.delete('external-editor');
       history.replaceState(null, '', u.pathname + u.search + u.hash);
       setTimeout(() => startEdit(null), 100);
     }

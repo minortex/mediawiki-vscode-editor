@@ -397,7 +397,7 @@
   function editUrlFor(href) {
     try {
       var url = new URL(href, location.href);
-      url.searchParams.set('vcpe-edit', '1');
+      url.searchParams.set('external-editor', '1');
       return url.href;
     } catch (e) {
       return href;
@@ -406,10 +406,10 @@
 
   function consumeAutoEdit() {
     var url = new URL(location.href);
-    if (url.searchParams.get('vcpe-edit') !== '1') return null;
-    var section = url.searchParams.get('vcpe-section');
-    url.searchParams.delete('vcpe-edit');
-    url.searchParams.delete('vcpe-section');
+    if (url.searchParams.get('external-editor') !== '1') return null;
+    var section = url.searchParams.get('external-editor-section');
+    url.searchParams.delete('external-editor');
+    url.searchParams.delete('external-editor-section');
     try {
       history.replaceState(null, '', url.pathname + url.search + url.hash);
     } catch (e) {}

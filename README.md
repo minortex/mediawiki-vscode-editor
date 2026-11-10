@@ -20,7 +20,7 @@ VSCode --保存--> 浏览器（action=parse 渲染预览）
 1. VSCode 扩展：
 
    ```sh
-   codium --install-extension dist/mediawiki-vscode-editor-0.4.0.vsix
+   codium --install-extension dist/mediawiki-vscode-editor-0.4.1.vsix
    # 或 code --install-extension ...
 
    ```
@@ -134,7 +134,7 @@ https://cdn.jsdelivr.net/gh/minortex/mediawiki-vscode-editor@latest/ipe-plugin/r
 - VSCode 内容变化 → 插件调用 `action=parse` 替换正文，保留页面内预览和光标定位；
 - VSCode 里执行 `MediaWiki: 通过 InPageEdit 保存当前文件` → 插件调用 `wikiPage.edit()`，复用 IPE 的 token、`basetimestamp`、冲突处理和 watchlist。
 
-限制：章节编辑暂时只有预览提示；页面标签栏的原生“编辑”链接不经过 IPE；保存结果在页面状态条显示。插件会把当前页面 origin 作为 wiki 标识发送；换站点时先在命令面板添加对应 wiki。定义跳转和预览蓝链依赖插件识别 `vcpe-edit=1` 参数并自动进入 IPE 编辑态。
+限制：章节编辑暂时只有预览提示；页面标签栏的原生“编辑”链接不经过 IPE；保存结果在页面状态条显示。插件会把当前页面 origin 作为 wiki 标识发送；换站点时先在命令面板添加对应 wiki。定义跳转和预览蓝链依赖插件识别 `external-editor=1` 参数并自动进入 IPE 编辑态。
 
 ## 测试
 
