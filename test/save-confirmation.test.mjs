@@ -6,13 +6,29 @@ import path from 'node:path';
 import Module, {createRequire} from 'node:module';
 
 const require = createRequire(import.meta.url);
+class WorkspaceEdit {
+  replace(uri, range, text) {
+    this.uri = uri;
+    this.range = range;
+    this.text = text;
+  }
+}
+class Range {
+  constructor(start, end) {
+    this.start = start;
+    this.end = end;
+  }
+}
 const vscodeMock = {
-  workspace: {textDocuments: []},
+  workspace: {textDocuments: [], applyEdit: async () => true},
   window: {
     setStatusBarMessage() {},
     showWarningMessage() {},
     showErrorMessage() {},
+    showTextDocument: async () => undefined,
   },
+  WorkspaceEdit,
+  Range,
 };
 const loadModule = Module._load;
 Module._load = function (request, parent, isMain) {
@@ -120,5 +136,38 @@ test('a failed save keeps the temp file as a draft when the session closes', asy
   assert.equal(fs.existsSync(fsPath), true);
   assert.equal(manager.get('s1')?.state, 'draft');
   assert.deepEqual(deleted, []);
+  fs.rmSync(dir, {recursive: true, force: true});
+});
+
+test('an edit conflict writes git-style markers into the open document', async () => {
+  const {dir, fsPath, manager, controller, vscode} = fixture();
+  const text = '首行\n本地内容\n尾行\n';
+  let applied;
+  vscode.workspace.textDocuments = [
+    {
+      uri: {fsPath},
+      getText: () => text,
+      positionAt: offset => ({offset}),
+    },
+  ];
+  vscode.workspace.applyEdit = async edit => {
+    applied = edit;
+    return true;
+  };
+  await controller.handleConflict({
+    type: 'conflict',
+    sessionId: 's1',
+    remoteText: '首行\n远端内容\n尾行\n',
+    remoteRevid: 42,
+    remoteTimestamp: '2026-11-10T00:00:00Z',
+  });
+  assert.ok(applied);
+  assert.match(applied.text, /<<<<<<< VSCode 本地版本/);
+  assert.match(applied.text, /=======/);
+  assert.match(applied.text, />>>>>>> 站点最新版本（rev 42）/);
+  assert.match(applied.text, /本地内容/);
+  assert.match(applied.text, /远端内容/);
+  assert.equal(manager.get('s1')?.revid, 42);
+  assert.equal(manager.get('s1')?.basetimestamp, '2026-11-10T00:00:00Z');
   fs.rmSync(dir, {recursive: true, force: true});
 });

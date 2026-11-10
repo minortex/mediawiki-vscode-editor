@@ -174,6 +174,12 @@ function handleMessage(
     controller.markSaved(msg.sessionId);
   } else if (msg.type === 'save-result') {
     controller.markSaveFailed(msg.sessionId);
+  } else if (msg.type === 'conflict') {
+    controller.handleConflict(msg).catch((error: unknown) =>
+      vscode.window.showErrorMessage(
+        `MediaWiki: 载入冲突失败：${error instanceof Error ? error.message : String(error)}`,
+      ),
+    );
   } else if (msg.type === 'save-confirmed') {
     controller.confirmSaved(msg, ws).catch(() => {});
   } else if (msg.type === 'locate') {

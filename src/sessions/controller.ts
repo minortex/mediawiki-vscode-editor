@@ -7,7 +7,9 @@ import type {SessionManager, SessionMeta} from './manager';
 import type {WikiRecord, WikiRegistry} from '../wiki/registry';
 import {normalizeOrigin} from '../wiki/config';
 import type {LanguageFeatures, NavigateEditRequest} from '../language/features';
+import {markConflict} from './conflict';
 import type {
+  ConflictMessage,
   FinishMessage,
   WikiIdentity,
   OpenMessage,
@@ -45,6 +47,7 @@ export interface SessionController {
   finish(msg: FinishMessage): Promise<void>;
   markSaved(sessionId: string): void;
   markSaveFailed(sessionId: string): void;
+  handleConflict(msg: ConflictMessage): Promise<void>;
   confirmSaved(msg: SaveConfirmedMessage, ws: SocketLike): Promise<void>;
   registerWiki(msg: RegisterWikiMessage, ws: SocketLike): Promise<void>;
   query(msg: SessionQueryMessage, ws: SocketLike): Promise<void>;
@@ -197,6 +200,56 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
 
   function markSaveFailed(sessionId: string): void {
     if (sessionManager.get(sessionId)) saveFailures.add(sessionId);
+  }
+
+  async function handleConflict(msg: ConflictMessage): Promise<void> {
+    const meta = sessionManager.get(msg.sessionId);
+    if (!meta) return;
+    markSaveFailed(msg.sessionId);
+    if (msg.remoteRevid !== undefined || msg.remoteTimestamp !== undefined) {
+      sessionManager.updateRevision(
+        msg.sessionId,
+        msg.remoteRevid,
+        msg.remoteTimestamp,
+      );
+    }
+    const doc = vscode.workspace.textDocuments.find(
+      document => document.uri.fsPath === meta.fsPath,
+    );
+    if (!doc) {
+      vscode.window.showWarningMessage(
+        `MediaWiki: 检测到编辑冲突，但找不到本地文件：${meta.fsPath}`,
+      );
+      return;
+    }
+    const local = doc.getText();
+    const label = msg.remoteRevid
+      ? `站点最新版本（rev ${msg.remoteRevid}）`
+      : '站点最新版本';
+    const merged = markConflict(local, msg.remoteText, label);
+    if (merged === local) {
+      vscode.window.showWarningMessage(
+        'MediaWiki: 提交冲突，但本地内容与站点最新内容一致。',
+      );
+      return;
+    }
+    const edit = new vscode.WorkspaceEdit();
+    edit.replace(
+      doc.uri,
+      new vscode.Range(doc.positionAt(0), doc.positionAt(local.length)),
+      merged,
+    );
+    const applied = await vscode.workspace.applyEdit(edit);
+    if (!applied) {
+      vscode.window.showWarningMessage(
+        'MediaWiki: 提交冲突，但无法写入冲突标记。本地文件已保留。',
+      );
+      return;
+    }
+    await vscode.window.showTextDocument(doc, {preview: false});
+    vscode.window.showWarningMessage(
+      'MediaWiki: 检测到编辑冲突，已将本地版本与站点最新版本写入编辑器。请处理冲突标记后重新提交。',
+    );
   }
 
   async function confirmSaved(msg: SaveConfirmedMessage, ws: SocketLike): Promise<void> {
@@ -508,6 +561,7 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
     finish,
     markSaved,
     markSaveFailed,
+    handleConflict,
     confirmSaved,
     registerWiki,
     query,

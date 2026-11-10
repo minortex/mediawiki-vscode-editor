@@ -171,6 +171,19 @@ export class SessionManager {
     this.onChange();
   }
 
+  updateRevision(
+    sessionId: string,
+    revid?: number,
+    basetimestamp?: string,
+  ): void {
+    const meta = this.sessions.get(sessionId);
+    if (!meta) return;
+    if (revid !== undefined) meta.revid = revid;
+    if (basetimestamp !== undefined) meta.basetimestamp = basetimestamp;
+    this.persist();
+    this.onChange();
+  }
+
   markAttached(sessionId: string): void {
     const meta = this.sessions.get(sessionId);
     if (!meta) return;

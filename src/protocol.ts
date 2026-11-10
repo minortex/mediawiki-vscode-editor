@@ -86,6 +86,15 @@ export interface SaveResultMessage {
   error?: string;
 }
 
+export interface ConflictMessage {
+  type: 'conflict';
+  sessionId: string;
+  remoteText: string;
+  remoteRevid?: number;
+  remoteTimestamp?: string;
+  message?: string;
+}
+
 export interface SaveConfirmedMessage {
   type: 'save-confirmed';
   sessionId: string;
@@ -106,6 +115,7 @@ export type BrowserMessage =
   | LocateMessage
   | RequestSaveMessage
   | SaveResultMessage
+  | ConflictMessage
   | SaveConfirmedMessage
   | HeartbeatMessage;
 

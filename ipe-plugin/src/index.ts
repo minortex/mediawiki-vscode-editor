@@ -263,6 +263,14 @@ type OutgoingMessage =
     }
   | {type: 'request-save'; sessionId: string; summary?: string; minor?: boolean}
   | {
+      type: 'conflict'
+      sessionId: string
+      remoteText: string
+      remoteRevid?: number
+      remoteTimestamp?: string
+      message?: string
+    }
+  | {
       type: 'locate'
       sessionId: string
       text: string
@@ -1449,6 +1457,19 @@ export default {
       })
     }
 
+    function isEditConflict(error: unknown): boolean {
+      const value = error as {
+        code?: unknown
+        message?: unknown
+        data?: {error?: {code?: unknown}}
+      }
+      return (
+        value?.code === 'editconflict' ||
+        value?.data?.error?.code === 'editconflict' ||
+        /editconflict|编辑冲突/i.test(String(value?.message || ''))
+      )
+    }
+
     async function saveEdit(
       text: string,
       summary: string | undefined,
@@ -1496,7 +1517,36 @@ export default {
         const message = error instanceof Error ? error.message : String(error)
         setBusy(false)
         send({type: 'save-result', sessionId, requestId, ok: false, error: message})
-        setStatus(`保存失败：${message}`, 'error')
+        let conflictSent = false
+        if (isEditConflict(error)) {
+          try {
+            const latest = await ctx.wikiPage.newFromTitle(
+              session.title,
+              false,
+              session.section,
+              true,
+            )
+            const revision = latest.revisions[0]
+            if (revision) {
+              session.wikiPage = latest
+              send({
+                type: 'conflict',
+                sessionId,
+                remoteText: revision.content || '',
+                remoteRevid: revision.revid,
+                remoteTimestamp: revision.timestamp,
+                message,
+              })
+              conflictSent = true
+            }
+          } catch {}
+        }
+        setStatus(
+          conflictSent
+            ? '检测到编辑冲突，已载入冲突标记；处理后再提交'
+            : `保存失败：${message}`,
+          'error',
+        )
       }
     }
 
