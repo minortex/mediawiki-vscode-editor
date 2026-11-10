@@ -1470,6 +1470,36 @@ export default {
       )
     }
 
+    async function latestPageForSession(): Promise<IWikiPage | null> {
+      if (!session) return null
+      return ctx.wikiPage.newFromTitle(
+        session.title,
+        false,
+        session.section,
+        true,
+      )
+    }
+
+    function reportConflict(
+      latest: IWikiPage,
+      message: string,
+    ): boolean {
+      if (!session) return false
+      const revision = latest.revisions[0]
+      if (!revision) return false
+      session.wikiPage = latest
+      send({
+        type: 'conflict',
+        sessionId: session.id,
+        remoteText: revision.content || '',
+        remoteRevid: revision.revid,
+        remoteTimestamp: revision.timestamp,
+        message,
+      })
+      setStatus('检测到编辑冲突，已载入冲突标记；处理后再提交', 'error')
+      return true
+    }
+
     async function saveEdit(
       text: string,
       summary: string | undefined,
@@ -1479,6 +1509,24 @@ export default {
       if (!session) return
       const sessionId = session.id
       try {
+        const baseRevid = session.wikiPage.revisions[0]?.revid
+        let latest: IWikiPage | null = null
+        try {
+          latest = await latestPageForSession()
+        } catch {}
+        const latestRevid = latest?.revisions[0]?.revid
+        if (
+          baseRevid !== undefined &&
+          latestRevid !== undefined &&
+          latestRevid !== baseRevid &&
+          latest
+        ) {
+          setBusy(false)
+          reportConflict(latest, '页面已被其他人修改。')
+          send({type: 'save-result', sessionId, requestId, ok: false, error: '编辑冲突'})
+          return
+        }
+        if (latest) session.wikiPage = latest
         await session.wikiPage.edit({
           text,
           summary: summary || '',
@@ -1520,33 +1568,13 @@ export default {
         let conflictSent = false
         if (isEditConflict(error)) {
           try {
-            const latest = await ctx.wikiPage.newFromTitle(
-              session.title,
-              false,
-              session.section,
-              true,
-            )
-            const revision = latest.revisions[0]
-            if (revision) {
-              session.wikiPage = latest
-              send({
-                type: 'conflict',
-                sessionId,
-                remoteText: revision.content || '',
-                remoteRevid: revision.revid,
-                remoteTimestamp: revision.timestamp,
-                message,
-              })
-              conflictSent = true
-            }
+            const latest = await latestPageForSession()
+            if (latest) conflictSent = reportConflict(latest, message)
           } catch {}
         }
-        setStatus(
-          conflictSent
-            ? '检测到编辑冲突，已载入冲突标记；处理后再提交'
-            : `保存失败：${message}`,
-          'error',
-        )
+        if (!conflictSent) {
+          setStatus(`保存失败：${message}`, 'error')
+        }
       }
     }
 
