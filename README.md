@@ -4,7 +4,7 @@
 
 ## 组成
 
-- `userscript/mediawiki-vscode-editor.user.js`：Tampermonkey 脚本，运行在任意 MediaWiki 站点页面里
+- `ipe-plugin/mediawiki-vscode-ipe.js`：InPageEdit NEXT 插件，运行在任意 MediaWiki 站点页面里
 - 本 VSCode 扩展：本地 WebSocket 服务（默认 `127.0.0.1:8927`），把页面源码落到临时文件，保存时把内容推回浏览器。
 
 内容方向：
@@ -20,17 +20,17 @@ VSCode --保存--> 浏览器（action=parse 渲染预览）
 1. VSCode 扩展：
 
    ```sh
-   codium --install-extension dist/mediawiki-vscode-editor-0.8.0.vsix
+   codium --install-extension dist/mediawiki-vscode-editor-0.8.1.vsix
    # 或 code --install-extension ...
 
    ```
 
    或在扩展目录按 F5 调试。
 
-2. 浏览器端二选一：
+2. 浏览器端安装 IPE 插件，二选一：
 
-   - Tampermonkey：新建脚本，粘贴 `userscript/mediawiki-vscode-editor.user.js` 的内容。脚本匹配所有站点，但只会对检测到 MediaWiki `mw.config` 的页面生效。更新时打开同一条目，全选删除后粘贴新文件再保存。装好后控制台应出现 `[mediawiki-vscode] userscript 0.8.0 loaded`。
-   - 或直接放进个人 JS：打开 `https://<你的 wiki>/User:<你的用户名>/common.js`（红链就创建），粘贴同一份内容并保存，然后 `?action=purge` 或 Ctrl+F5 刷新。个人 JS 只在你登录时加载，效果与 Tampermonkey 相同。
+   - 在 InPageEdit 设置 → 插件商店添加注册表：`https://cdn.jsdelivr.net/gh/minortex/mediawiki-vscode-editor@latest/ipe-plugin/registry.json`，然后安装并启用。
+   - 或把 `ipe-plugin/mediawiki-vscode-ipe.js` 放进个人 JS / Tampermonkey（需在 InPageEdit 之后加载）。
 
    不要放进 `MediaWiki:Common.js`：那需要 `editinterface` 权限，且会让所有访客都去连本机端口。
 
@@ -68,7 +68,7 @@ VSCode 设置：
 - `mediawikiEditor.diagnosticsMaxLength`：超过该字符数不自动诊断、不生成语义高亮，默认 100000；设为 0 不限制。
 - `mediawikiEditor.parserConfig`：未注册文档或内置默认配置的覆盖路径；已注册 wiki 使用网页端推送时生成的独立配置。
 
-修改端口时同步改用户脚本顶部的 `WS_URL`。
+修改端口时同步改 IPE 插件顶部的 `WS_URL`。
 
 ## 多 wiki
 
@@ -94,7 +94,7 @@ VSCode 设置：
 - 外部链接与 wiki 内链可点击。
 - 模板、模块和内链目标支持 `跳转到定义`：扩展通过 WebSocket 请求当前网页用 `window.open` 打开目标页并进入 IPE 编辑态，扩展随后打开对应临时文件。标签页生命周期归浏览器管理；弹窗被拦截时页面右上角提供手动打开链接，扩展也会提示。
 
-诊断在输入后防抖执行；超大文档默认跳过自动诊断，可用 `MediaWiki: 重新检查当前文件` 手动触发。扩展自带通用默认解析配置 `config/default.json`；每个站点的配置由 `scripts/build-wiki-config.mjs` 从站点 `siteinfo` API 生成，不执行站点脚本。需要为某站点生成配置时运行：
+诊断在输入后防抖执行；超大文档默认跳过自动诊断，可用 `MediaWiki: 重新检查当前文件` 手动触发。扩展从 `wikiparser-node` 依赖读取通用默认解析配置；每个站点的配置由 `scripts/build-wiki-config.mjs` 从站点 `siteinfo` API 生成，不执行站点脚本。需要为某站点生成配置时运行：
 
 ```sh
 node scripts/build-wiki-config.mjs <站点地址> [输出路径]
@@ -114,17 +114,7 @@ node scripts/build-wiki-config.mjs <站点地址> [输出路径]
 - **匹配不到就不动**：不回退到模板区域或章节比例，保持上一次的视口位置。
 - 点击预览正文（非链接）时，取点击处的文本发给 VSCode，按该文本定位源码行。
 
-## 通过 IPE 插件商店安装
-
-在 InPageEdit 设置 → 插件商店里添加注册表：
-
-```
-https://cdn.jsdelivr.net/gh/minortex/mediawiki-vscode-editor@latest/ipe-plugin/registry.json
-```
-
-安装后由插件商店启用/禁用/卸载。也可以直接把 `ipe-plugin/mediawiki-vscode-ipe.js` 放进个人 JS 或 Tampermonkey。
-
-## InPageEdit 插件（初版）
+## InPageEdit 插件
 
 `ipe-plugin/mediawiki-vscode-ipe.js` 是 InPageEdit NEXT 插件版本，用来替代自写的前端入口：
 
@@ -154,14 +144,3 @@ WIKI_URL=https://example.org BROWSER_PORT=9222 node test/survey.mjs
 - 除内联脚本外，页面级 gadget 不会重新初始化，依赖它们的交互仍可能不作用于草稿。
 - 提交完全由浏览器完成，扩展不接触账号密码。
 - 章节编辑只把该节文本送到 VSCode，提交时使用 `section=N`，由 MediaWiki 拼回整页；冲突检测仍基于整页 `basetimestamp`。
-
-## 联调
-
-无法自动化的浏览器侧状态（例如 VSCode 的未保存状态）可以用一个只实现协议的后端模拟：
-
-```sh
-MOCK_MODE=dirty node scripts/mock-server.js   # 回一条 state(dirty:true)
-MOCK_MODE=update node scripts/mock-server.js  # 回一条 update(text + 标记)
-```
-
-它不打开编辑器，仅用于验证浏览器端交互。正常运行不需要它。
