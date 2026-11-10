@@ -1,6 +1,6 @@
 {
   "name": "mediawiki-vscode-ipe",
-  "version": "0.9.6",
+  "version": "0.9.7",
   "private": true,
   "type": "module",
   "module": "./dist/index.mjs",
@@ -19,7 +19,7 @@
     ],
     "loader": {
       "kind": "module",
-      "entry": "dist/index.mjs?v=0.9.6",
+      "entry": "dist/index.mjs?v=0.9.7",
       "main_export": "default"
     }
   }

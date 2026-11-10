@@ -261,7 +261,7 @@ type OutgoingMessage =
       summary?: string
       minor?: boolean
     }
-  | {type: 'save'; sessionId: string; summary?: string; minor?: boolean}
+  | {type: 'request-save'; sessionId: string; summary?: string; minor?: boolean}
   | {
       type: 'locate'
       sessionId: string
@@ -1442,7 +1442,7 @@ export default {
       session.reload = !!reloadInput?.checked
       setStatus('正在保存文件…')
       send({
-        type: 'save',
+        type: 'request-save',
         sessionId: session.id,
         summary: summaryInput?.value || '',
         minor: !!minorInput?.checked,
