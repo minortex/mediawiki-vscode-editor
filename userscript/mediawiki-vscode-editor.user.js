@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MediaWiki ⇄ VSCode 外部编辑器
 // @namespace    mediawiki-vscode-editor
-// @version      0.7.0
+// @version      0.8.0
 // @description  在 MediaWiki 站点发起编辑，用 VSCode 改，保存即预览，浏览器内提交
 // @match        *://*/*
 // @grant        none
@@ -13,7 +13,7 @@
   'use strict';
   if (!window.mw || !mw.config || !mw.config.get('wgPageName')) return;
 
-  console.info('[mediawiki-vscode] userscript 0.7.0 loaded');
+  console.info('[mediawiki-vscode] userscript 0.8.0 loaded');
 
   const WS_URL = 'ws://127.0.0.1:8927';
   const RECONNECT_MS = 1000;
@@ -111,6 +111,11 @@
         } catch (error) {
           notify(`站点注册失败：${error.message}`, 6000);
         }
+        if (session) {
+          closeLocalSession();
+          notify('扩展没有该会话，已退出编辑态。', 6000);
+          return;
+        }
         if (pendingEdit) {
           const pending = pendingEdit;
           pendingEdit = null;
@@ -142,21 +147,31 @@
         onSessionResult(msg);
         return;
       }
+      if (msg.type === 'navigate-edit') {
+        openNavigate(msg);
+        return;
+      }
       if (!session || msg.sessionId !== session.id) return;
       if (msg.type === 'finish') {
-        if (msg.result === 'closed') {
-          if (session.patch) revertPatch();
-          if (session.fullOriginal) {
-            const root = document.querySelector('#mw-content-text');
-            root.replaceChildren(...session.fullOriginal);
-            if (window.mw?.hook && typeof jQuery === 'function') {
-              mw.hook('wikipage.content').fire(jQuery(root));
-            }
-          }
+        if (msg.result === 'closed') closeLocalSession();
+        else {
+          session = null;
+          document.body.classList.remove('mwe-editing');
+          document.querySelector('.mwe-bar')?.remove();
         }
-        session = null;
-        document.body.classList.remove('mwe-editing');
-        document.querySelector('.mwe-bar')?.remove();
+        if (window.name.startsWith('mwe-edit:') && msg.result !== 'closed') {
+          setTimeout(() => window.close(), 50);
+        }
+        return;
+      }
+      if (msg.type === 'editor-closed') {
+        closeLocalSession();
+        notify('编辑器已关闭，草稿已保留。', 6000);
+        return;
+      }
+      if (msg.type === 'preempted') {
+        closeLocalSession();
+        notify('已在另一个标签继续编辑。', 5000);
         return;
       }
       if (msg.type === 'update') {
@@ -354,6 +369,63 @@
     sessionWaiters.delete(msg.requestId);
     if (!msg.ok) waiter.reject(new Error(msg.error || '会话查询失败'));
     else waiter.resolve(msg.session || null);
+  }
+
+  function showOpenLink(url) {
+    let el = document.getElementById('mwe-open-link');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'mwe-open-link';
+      el.style.cssText =
+        'position:fixed;right:20px;top:20px;z-index:2147483003;max-width:360px;' +
+        'background:#fff;color:#202122;border:1px solid #a2a9b1;border-left:4px solid #fc3;' +
+        'padding:12px 14px;border-radius:4px;font-size:13px;line-height:1.5;' +
+        'box-shadow:0 2px 12px rgba(0,0,0,.2);';
+      document.body.append(el);
+    }
+    el.replaceChildren('弹窗被拦截，');
+    const a = document.createElement('a');
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.textContent = '手动打开目标页面';
+    a.style.color = '#36c';
+    el.append(a);
+    setTimeout(() => el.remove(), 10000);
+  }
+
+  function openNavigate(msg) {
+    let url;
+    try {
+      url = new URL(mw.util.getUrl(msg.title), location.href);
+    } catch {
+      send({type: 'open-result', requestId: msg.requestId, opened: false});
+      return;
+    }
+    url.searchParams.set('external-editor', '1');
+    if (msg.fragment) url.hash = msg.fragment;
+    const win = window.open(url.href, `mwe-edit:${encodeURIComponent(msg.title)}`);
+    if (!win) {
+      showOpenLink(url.href);
+      send({type: 'open-result', requestId: msg.requestId, opened: false});
+      return;
+    }
+    try { win.focus(); } catch {}
+    send({type: 'open-result', requestId: msg.requestId, opened: true});
+  }
+
+  function closeLocalSession() {
+    if (session?.patch) revertPatch();
+    if (session?.fullOriginal) {
+      const root = document.querySelector('#mw-content-text');
+      root.replaceChildren(...session.fullOriginal);
+      if (window.mw?.hook && typeof jQuery === 'function') {
+        mw.hook('wikipage.content').fire(jQuery(root));
+      }
+    }
+    session = null;
+    document.body.classList.remove('mwe-editing');
+    document.querySelector('.mwe-bar')?.remove();
   }
 
   function adoptSession(info) {

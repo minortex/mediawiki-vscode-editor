@@ -206,6 +206,51 @@
     setTimeout(function () { box.remove(); }, 8000);
   }
 
+  function showOpenLink(url) {
+    var link = document.createElement('a');
+    link.href = url;
+    link.target = '_blank';
+    link.rel = 'noopener';
+    link.textContent = '打开目标页面';
+    link.style.cssText = 'color:#36c;text-decoration:underline;cursor:pointer;';
+    var modal = (ipeContext && ipeContext.modal)
+      || (window.ipe && window.ipe.get && window.ipe.get('modal'));
+    if (modal && typeof modal.notify === 'function') {
+      modal.notify('warning', {
+        title: '弹窗被拦截',
+        content: link,
+        position: 'top right',
+        closeAfter: {time: 10000, resetOnHover: true},
+      });
+    } else {
+      notifyOffline('弹窗被拦截，请手动打开目标页面。', '需要打开页面');
+    }
+  }
+
+  function openNavigate(msg) {
+    var url;
+    try {
+      url = new URL(mw.util.getUrl(msg.title), location.href);
+    } catch (e) {
+      send({type: 'open-result', requestId: msg.requestId, opened: false});
+      return;
+    }
+    url.searchParams.set('external-editor', '1');
+    if (msg.fragment) url.hash = msg.fragment;
+    var name = 'mwe-edit:' + encodeURIComponent(msg.title);
+    var win = null;
+    try {
+      win = window.open(url.href, name);
+    } catch (e) {}
+    if (!win) {
+      showOpenLink(url.href);
+      send({type: 'open-result', requestId: msg.requestId, opened: false});
+      return;
+    }
+    try { win.focus(); } catch (e) {}
+    send({type: 'open-result', requestId: msg.requestId, opened: true});
+  }
+
   var registeredWiki = null;
   var registeringWiki = null;
   var registerSeq = 0;
@@ -278,6 +323,12 @@
         } catch (e) {
           status('站点注册失败：' + ((e && e.message) || e), 'error');
         }
+        if (session) {
+          restorePage();
+          endSession();
+          notifyOffline('扩展没有该会话，已退出编辑态。', '会话已结束');
+          return;
+        }
         if (pendingStart) {
           var pending = pendingStart;
           pendingStart = null;
@@ -304,6 +355,10 @@
         onSessionResult(msg);
         return;
       }
+      if (msg.type === 'navigate-edit') {
+        openNavigate(msg);
+        return;
+      }
       if (!session || msg.sessionId !== session.id) return;
       if (msg.type === 'update') {
         session.text = msg.text;
@@ -320,6 +375,17 @@
       } else if (msg.type === 'finish') {
         if (msg.result === 'closed') restorePage();
         endSession();
+        if (window.name.indexOf('mwe-edit:') === 0 && msg.result !== 'closed') {
+          setTimeout(function () { window.close(); }, 50);
+        }
+      } else if (msg.type === 'editor-closed') {
+        restorePage();
+        endSession();
+        notifyOffline('编辑器已关闭，草稿已保留。', '编辑器已关闭');
+      } else if (msg.type === 'preempted') {
+        restorePage();
+        endSession();
+        notifyOffline('已在另一个标签继续编辑。', '会话已转移');
       }
     });
   }
