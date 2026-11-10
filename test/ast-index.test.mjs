@@ -4,6 +4,7 @@ import {createRequire} from 'node:module';
 
 const require = createRequire(import.meta.url);
 const itemsUtil = require('../out/editor/items.js');
+const {findDefinitionTarget} = require('../out/language/definition.js');
 const {buildAstIndex, nodeAtOffset} = require('../out/editor/ast-index.js');
 const Parser = require('wikiparser-node');
 
@@ -19,6 +20,9 @@ function document(text) {
     uri: {fsPath: `/tmp/ast-index-${Math.random()}.wiki`},
     version: 1,
     getText: () => text,
+    offsetAt({line, character}) {
+      return offsets[line] + character;
+    },
     positionAt(value) {
       let line = 0;
       while (line + 1 < offsets.length && offsets[line + 1] <= value) line++;
@@ -53,6 +57,38 @@ test('AST index exposes node ranges and deep nodes', () => {
   assert.ok(node);
   assert.equal(node.type, 'text');
   assert.ok(node.start <= offset && node.end > offset);
+});
+
+test('template cursor resolves to a section target', () => {
+  const doc = document(text);
+  const template = text.indexOf('{{Songbox');
+  assert.equal(itemsUtil.templateSectionFor(doc, template + 3), '标题');
+});
+
+test('definition target keeps parser method binding', () => {
+  const source = '{{模板|参数=值}} [[目标|显示]] {{#invoke:模块|fn}}';
+  const doc = document(source);
+  const root = Parser.parse(source);
+  assert.deepEqual(
+    findDefinitionTarget({
+      document: doc,
+      position: {line: 0, character: 2},
+      root,
+      config: Parser.getConfig(),
+      pageTitle: '测试页',
+    }),
+    {title: 'Template:模板', fragment: undefined},
+  );
+  assert.equal(
+    findDefinitionTarget({
+      document: doc,
+      position: {line: 0, character: 14},
+      root,
+      config: Parser.getConfig(),
+      pageTitle: '测试页',
+    })?.title,
+    '目标',
+  );
 });
 
 test('strict reverse lookup uses only index items, never line fallback', () => {

@@ -1,6 +1,6 @@
 import Parser from 'wikiparser-node';
 import {createRequire} from 'node:module';
-import {astIndexFor, buildAstIndex, type AstIndex, type AstIndexNode} from './ast-index';
+import {astIndexFor, buildAstIndex, nodeAtOffset, type AstIndex, type AstIndexNode} from './ast-index';
 
 const localRequire = createRequire(__filename);
 
@@ -228,6 +228,34 @@ export function itemsFor(doc: LocateDocument, root?: unknown): LocateItem[] {
   }
   itemCache.set(doc.uri.fsPath, {version: doc.version, items});
   return items;
+}
+
+export function templateSectionFor(
+  doc: LocateDocument,
+  offset: number,
+  root?: unknown,
+): string | undefined {
+  const index = astIndexFor(doc, root);
+  let node = nodeAtOffset(index, offset);
+  while (node && node.type !== 'template' && node.type !== 'transclude') node = node.parent;
+  if (!node) return undefined;
+  const headings = index.nodes
+    .filter(item => item.type === 'heading' && item.level > 0 && item.level <= 2)
+    .sort((a, b) => a.start - b.start);
+  let section = '';
+  for (const heading of headings) {
+    if (heading.start > node.start) break;
+    section = heading.token
+      .toString()
+      .trim()
+      .replace(/^=+|=+$/g, '')
+      .replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, '$2')
+      .replace(/\[\[([^\]]+)\]\]/g, '$1')
+      .replace(/<[^>]*>/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+  return section;
 }
 
 export function itemAt(items: LocateItem[], offset: number): number {

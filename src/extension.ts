@@ -373,10 +373,28 @@ function activate(context: vscode.ExtensionContext): void {
             event.selections[0]?.active || new vscode.Position(line, 0),
           );
           const itemIndex = itemsUtil.itemAt(items, offset);
-          if (itemIndex < 0) return;
-          const item = items[itemIndex];
+          const item = itemIndex >= 0 ? items[itemIndex] : undefined;
+          const exact = !!item && item.start <= offset && item.end >= offset;
+          if (!exact) {
+            const section = itemsUtil.templateSectionFor(
+              doc,
+              offset,
+              languageFeatures?.ast(doc),
+            );
+            if (section !== undefined) {
+              bridge?.broadcast({
+                type: 'scroll',
+                kind: 'section',
+                sessionId,
+                section,
+              });
+              return;
+            }
+          }
+          if (!item) return;
           bridge?.broadcast({
             type: 'scroll',
+            kind: 'text',
             sessionId,
             text: item.text,
             occurrence: item.sectionOccurrence,

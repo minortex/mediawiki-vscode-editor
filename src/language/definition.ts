@@ -111,7 +111,7 @@ export function findDefinitionTarget({
     value = value.slice(1);
   }
   try {
-    const normalizeTitle = Parser.normalizeTitle as NormalizeTitleWithPage;
+    const normalizeTitle = Parser.normalizeTitle.bind(Parser) as NormalizeTitleWithPage;
     const title = pageTitle
       ? normalizeTitle(value, ns, false, config, {page: pageTitle})
       : normalizeTitle(value, ns, false, config);

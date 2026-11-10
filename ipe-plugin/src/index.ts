@@ -136,8 +136,9 @@ interface DirtyStateMessage {
   dirty: boolean
 }
 
-interface ScrollMessage {
+interface ScrollTextMessage {
   type: 'scroll'
+  kind?: 'text'
   sessionId: string
   text: string
   occurrence: number
@@ -148,6 +149,15 @@ interface ScrollMessage {
   prev?: string
   next?: string
 }
+
+interface ScrollSectionMessage {
+  type: 'scroll'
+  kind: 'section'
+  sessionId: string
+  section?: string
+}
+
+type ScrollMessage = ScrollTextMessage | ScrollSectionMessage
 
 interface SaveMessage {
   type: 'save'
@@ -710,16 +720,20 @@ export default {
           session.remoteDirty = !!msg.dirty
           refreshBar()
         } else if (msg.type === 'scroll') {
-          scrollToOccurrence(
-            msg.text,
-            msg.occurrence,
-            msg.section,
-            msg.scope,
-            msg.label,
-            msg.prev,
-            msg.next,
-            msg.labelOccurrence,
-          )
+          if (msg.kind === 'section') {
+            highlightSection(msg.section)
+          } else {
+            scrollToOccurrence(
+              msg.text,
+              msg.occurrence,
+              msg.section,
+              msg.scope,
+              msg.label,
+              msg.prev,
+              msg.next,
+              msg.labelOccurrence,
+            )
+          }
         } else if (msg.type === 'save') {
           setStatus('正在提交…')
           void saveEdit(msg.text, msg.summary, msg.minor, msg.requestId)
@@ -858,6 +872,20 @@ export default {
       if (next) range.setEndBefore(next)
       else range.setEnd(root, root.childNodes.length)
       return range
+    }
+
+    function highlightSection(section?: string): boolean {
+      const root = document.querySelector('#mw-content-text')
+      if (!root) return false
+      const headings = [...root.querySelectorAll('h2')]
+      const heading = section
+        ? headings.find(item => headingText(item) === section)
+        : undefined
+      const target =
+        heading?.nextElementSibling ||
+        heading ||
+        root.querySelector('p, .mw-parser-output > *')
+      return target ? drawBox(target.getBoundingClientRect()) : false
     }
 
     function scrollToOccurrence(

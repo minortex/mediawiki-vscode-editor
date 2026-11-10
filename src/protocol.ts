@@ -152,8 +152,9 @@ export interface DirtyStateMessage {
   dirty: boolean;
 }
 
-export interface ScrollMessage {
+export interface ScrollTextMessage {
   type: 'scroll';
+  kind?: 'text';
   sessionId: string;
   text: string;
   occurrence: number;
@@ -164,6 +165,15 @@ export interface ScrollMessage {
   prev?: string | null;
   next?: string | null;
 }
+
+export interface ScrollSectionMessage {
+  type: 'scroll';
+  kind: 'section';
+  sessionId: string;
+  section?: string;
+}
+
+export type ScrollMessage = ScrollTextMessage | ScrollSectionMessage;
 
 export interface SaveMessage {
   type: 'save';
