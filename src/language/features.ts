@@ -77,6 +77,13 @@ export function registerLanguageFeatures(
   context: vscode.ExtensionContext,
   options: LanguageFeaturesOptions = {},
 ): LanguageFeatures {
+  // wikiparser-node 内置的 DPL 参数表早于 DPL3；站点扩展会接受 uses 等
+  // 站点专有参数，不能让 no-ignored 把它们报成语法错误。
+  Parser.lintConfig = {
+    rules: {
+      'no-ignored': [2, {dynamicpagelist: false}],
+    },
+  };
   const services = new Map<string, ParserLanguageService>();
   const timers = new Map<string, NodeJS.Timeout>();
   const documentWikis = new Map<string, WikiRecord>();
