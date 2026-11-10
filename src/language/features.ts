@@ -77,13 +77,6 @@ export function registerLanguageFeatures(
   context: vscode.ExtensionContext,
   options: LanguageFeaturesOptions = {},
 ): LanguageFeatures {
-  // wikiparser-node 内置的 DPL 参数表早于 DPL3；站点扩展会接受 uses 等
-  // 站点专有参数，不能让 no-ignored 把它们报成语法错误。
-  Parser.lintConfig = {
-    rules: {
-      'no-ignored': [2, {dynamicpagelist: false}],
-    },
-  };
   const services = new Map<string, ParserLanguageService>();
   const timers = new Map<string, NodeJS.Timeout>();
   const documentWikis = new Map<string, WikiRecord>();
@@ -142,6 +135,24 @@ export function registerLanguageFeatures(
     }
   }
 
+  function isExtensionParameter(
+    root: ParserToken,
+    position: {line: number; character: number},
+  ): boolean {
+    let node = root.elementFromPoint(position.character, position.line) as
+      | ParserToken
+      | undefined;
+    while (node && node.type !== 'param-line') {
+      node = node.parentNode as ParserToken | undefined;
+    }
+    if (!node) return false;
+    let parent = node.parentNode as ParserToken | undefined;
+    while (parent && parent.type !== 'ext') {
+      parent = parent.parentNode as ParserToken | undefined;
+    }
+    return parent?.type === 'ext';
+  }
+
   async function runDiagnostics(document: vscode.TextDocument): Promise<void> {
     const service = serviceFor(document);
     if (!service) return;
@@ -161,10 +172,20 @@ export function registerLanguageFeatures(
       return;
     }
     const warnings = diagnosticWarnings();
+    const root = result.some(item => item.code === 'no-ignored') ? astFor(document) : undefined;
     diagnostics.set(
       document.uri,
       result
-        .filter(item => warnings || item.severity === 1 || item.severity === undefined)
+        .filter(item => {
+          if (
+            item.code === 'no-ignored' &&
+            root &&
+            isExtensionParameter(root, item.range.start)
+          ) {
+            return false;
+          }
+          return warnings || item.severity === 1 || item.severity === undefined;
+        })
         .map(toDiagnostic),
     );
   }
