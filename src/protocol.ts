@@ -164,6 +164,7 @@ export interface ScrollTextMessage {
   labelOccurrence?: number;
   prev?: string | null;
   next?: string | null;
+  template?: TemplateBlockTarget;
 }
 
 export interface ScrollSectionMessage {
@@ -173,7 +174,24 @@ export interface ScrollSectionMessage {
   section?: string;
 }
 
-export type ScrollMessage = ScrollTextMessage | ScrollSectionMessage;
+export interface TemplateBlockTarget {
+  name: string;
+  params: Record<string, string>;
+  section: string;
+  occurrence: number;
+}
+
+export interface ScrollTemplateMessage {
+  type: 'scroll';
+  kind: 'template';
+  sessionId: string;
+  template: TemplateBlockTarget;
+}
+
+export type ScrollMessage =
+  | ScrollTextMessage
+  | ScrollSectionMessage
+  | ScrollTemplateMessage;
 
 export interface SaveMessage {
   type: 'save';

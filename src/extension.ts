@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import {BrowserBridge} from './browser/bridge';
 import type {SocketLike} from './browser/server';
 import * as itemsUtil from './editor/items';
+import {templateTargetAt} from './editor/templates';
 import {registerLanguageFeatures, type LanguageFeatures} from './language/features';
 import * as wikis from './wiki/registry';
 import {SessionStore} from './sessions/store';
@@ -376,6 +377,25 @@ function activate(context: vscode.ExtensionContext): void {
           const item = itemIndex >= 0 ? items[itemIndex] : undefined;
           const exact = !!item && item.start <= offset && item.end >= offset;
           if (!exact) {
+            const target = templateTargetAt(
+              doc,
+              offset,
+              languageFeatures?.ast(doc),
+            );
+            if (target) {
+              bridge?.broadcast({
+                type: 'scroll',
+                kind: 'template',
+                sessionId,
+                template: {
+                  name: target.name,
+                  params: target.params,
+                  section: target.section,
+                  occurrence: target.occurrence,
+                },
+              });
+              return;
+            }
             const section = itemsUtil.templateSectionFor(
               doc,
               offset,
@@ -392,6 +412,11 @@ function activate(context: vscode.ExtensionContext): void {
             }
           }
           if (!item) return;
+          const template = templateTargetAt(
+            doc,
+            offset,
+            languageFeatures?.ast(doc),
+          );
           bridge?.broadcast({
             type: 'scroll',
             kind: 'text',
@@ -404,6 +429,14 @@ function activate(context: vscode.ExtensionContext): void {
             labelOccurrence: item.labelOccurrence,
             prev: item.prev,
             next: item.next,
+            template: template
+              ? {
+                  name: template.name,
+                  params: template.params,
+                  section: template.section,
+                  occurrence: template.occurrence,
+                }
+              : undefined,
           });
         }, 200),
       );

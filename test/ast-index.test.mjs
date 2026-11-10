@@ -5,6 +5,7 @@ import {createRequire} from 'node:module';
 const require = createRequire(import.meta.url);
 const itemsUtil = require('../out/editor/items.js');
 const {findDefinitionTarget} = require('../out/language/definition.js');
+const templates = require('../out/editor/templates.js');
 const {buildAstIndex, nodeAtOffset} = require('../out/editor/ast-index.js');
 const Parser = require('wikiparser-node');
 
@@ -63,6 +64,16 @@ test('template cursor resolves to a section target', () => {
   const doc = document(text);
   const template = text.indexOf('{{Songbox');
   assert.equal(itemsUtil.templateSectionFor(doc, template + 3), '标题');
+});
+
+test('template cursor resolves to a generic block target', () => {
+  const doc = document(text);
+  const template = text.indexOf('{{Songbox');
+  const target = templates.templateTargetAt(doc, template + 3);
+  assert.ok(target);
+  assert.equal(target.name, 'Songbox');
+  assert.equal(target.section, '标题');
+  assert.equal(target.occurrence, 1);
 });
 
 test('definition target keeps parser method binding', () => {

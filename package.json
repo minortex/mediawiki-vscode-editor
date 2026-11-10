@@ -2,7 +2,7 @@
   "name": "mediawiki-vscode-editor",
   "displayName": "MediaWiki ⇄ VSCode External Editor",
   "description": "Edit MediaWiki pages in VSCode; the browser previews on save and performs the edit",
-  "version": "0.16.5",
+  "version": "0.16.7",
   "publisher": "local",
   "license": "GPL-3.0-or-later",
   "engines": {

@@ -148,6 +148,7 @@ interface ScrollTextMessage {
   labelOccurrence?: number
   prev?: string
   next?: string
+  template?: TemplateBlockTarget
 }
 
 interface ScrollSectionMessage {
@@ -157,7 +158,24 @@ interface ScrollSectionMessage {
   section?: string
 }
 
-type ScrollMessage = ScrollTextMessage | ScrollSectionMessage
+interface TemplateBlockTarget {
+  name: string
+  params: Record<string, string>
+  section: string
+  occurrence: number
+}
+
+interface ScrollTemplateMessage {
+  type: 'scroll'
+  kind: 'template'
+  sessionId: string
+  template: TemplateBlockTarget
+}
+
+type ScrollMessage =
+  | ScrollTextMessage
+  | ScrollSectionMessage
+  | ScrollTemplateMessage
 
 interface SaveMessage {
   type: 'save'
@@ -722,8 +740,10 @@ export default {
         } else if (msg.type === 'scroll') {
           if (msg.kind === 'section') {
             highlightSection(msg.section)
+          } else if (msg.kind === 'template') {
+            highlightTemplate(msg.template)
           } else {
-            scrollToOccurrence(
+            const moved = scrollToOccurrence(
               msg.text,
               msg.occurrence,
               msg.section,
@@ -733,6 +753,7 @@ export default {
               msg.next,
               msg.labelOccurrence,
             )
+            if (!moved && msg.template) highlightTemplate(msg.template)
           }
         } else if (msg.type === 'save') {
           setStatus('正在提交…')
@@ -886,6 +907,64 @@ export default {
         heading ||
         root.querySelector('p, .mw-parser-output > *')
       return target ? drawBox(target.getBoundingClientRect()) : false
+    }
+
+    function compactText(value: string): string {
+      return value.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '')
+    }
+
+    function blockTitle(element: Element): string {
+      const title = element.querySelector(
+        '.navbox-title, caption, .infobox-title, .infoBoxTitle, .mbox-text, th',
+      )
+      return compactText(title?.textContent || '')
+    }
+
+    function highlightTemplate(target: TemplateBlockTarget): boolean {
+      const root = document.querySelector('#mw-content-text')
+      if (!root) return false
+      const range = sectionRange(target.section)
+      const selector = [
+        'table',
+        '.navbox',
+        '.infobox',
+        '.infoBox',
+        '.hatnote',
+        '.dablink',
+        '.mbox',
+        '.ambox',
+        '.cq-quote',
+        '[class*="quote"]',
+        '[class*="box"]',
+      ].join(',')
+      const name = compactText(target.name)
+      const params = Object.values(target.params)
+        .map(compactText)
+        .filter(value => value.length >= 2)
+      const scored: Array<{element: Element; score: number}> = []
+      for (const element of root.querySelectorAll(selector)) {
+        if (range && !range.intersectsNode(element)) continue
+        const text = compactText(element.textContent || '')
+        if (!text) continue
+        const title = blockTitle(element)
+        let score = 0
+        if (name && title.includes(name)) score += 200
+        else if (name && text.includes(name)) score += 80
+        const matchedParams = params.filter(value => text.includes(value)).length
+        score += Math.min(4, matchedParams) * 10
+        if (element.matches('table.navbox, .navbox')) score += 20
+        if (element.matches('.infobox, .infoBox')) score += 15
+        if (text.length > 100) score += 5
+        if (score >= 60) scored.push({element, score})
+      }
+      scored.sort((a, b) => b.score - a.score)
+      const chosen = scored[Math.min(target.occurrence - 1, scored.length - 1)]?.element
+      if (!chosen) return highlightSection(target.section)
+      if (chosen instanceof HTMLElement) {
+        revealHidden(chosen)
+        return drawBox(chosen.getBoundingClientRect())
+      }
+      return highlightSection(target.section)
     }
 
     function scrollToOccurrence(
