@@ -136,6 +136,7 @@ async function locateInEditor(msg: LocateMessage): Promise<void> {
     doc,
     msg.text,
     languageFeatures?.ast(doc),
+    {section: msg.section, occurrence: msg.occurrence},
   );
   if (line < 0) return;
   const editor = await vscode.window.showTextDocument(doc, {preview: false});
@@ -378,7 +379,8 @@ function activate(context: vscode.ExtensionContext): void {
             type: 'scroll',
             sessionId,
             text: item.text,
-            occurrence: itemsUtil.occurrenceOf(items, itemIndex),
+            occurrence: item.sectionOccurrence,
+            section: item.section,
             scope: item.scope,
             label: item.label,
             labelOccurrence: item.labelOccurrence,

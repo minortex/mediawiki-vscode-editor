@@ -1,5 +1,6 @@
 import Parser from 'wikiparser-node';
 import {createRequire} from 'node:module';
+import {astIndexFor, buildAstIndex, type AstIndex, type AstIndexNode} from './ast-index';
 
 const localRequire = createRequire(__filename);
 
@@ -10,7 +11,12 @@ export interface ItemScope {
 
 export interface LocateItem {
   start: number;
+  end: number;
+  path: string;
+  type: string;
   text: string;
+  section: string;
+  sectionOccurrence: number;
   scope: ItemScope | null;
   label: string | null;
   prev: string | null;
@@ -25,15 +31,6 @@ export interface LocateDocument {
   positionAt(offset: number): {line: number};
   lineCount: number;
   lineAt(line: number): {text: string};
-}
-
-interface LocateToken {
-  constructor: {name: string};
-  type: string;
-  name?: string;
-  childNodes?: readonly LocateToken[];
-  toString(): string;
-  getAbsoluteIndex(): number;
 }
 
 let toSimplified: ((text: string) => string) | null = null;
@@ -53,15 +50,15 @@ export function simplify(text: string): string {
   return toSimplified ? toSimplified(text) : text;
 }
 
-export function extractItems(text: string, root?: unknown): LocateItem[] {
-  if (text.length > 300000) return [];
-  const tree = (root ?? Parser.parse(text)) as LocateToken;
+export function extractItemsFromIndex(index: AstIndex): LocateItem[] {
   const items: LocateItem[] = [];
   let poemCount = 0;
 
   const add = (
     value: unknown,
+    node: AstIndexNode,
     start: number,
+    section: string,
     scope: ItemScope | null,
     label: string | null,
   ): void => {
@@ -73,79 +70,135 @@ export function extractItems(text: string, root?: unknown): LocateItem[] {
     );
     if (/\.(jpe?g|png|gif|svg|webp|ogg|mp3|webm|pdf)$/i.test(normalized)) return;
     if (!/[\p{L}\p{N}]/u.test(normalized)) return;
-    if (normalized.length >= 2 && normalized.length <= 60) {
-      items.push({
-        start,
-        text: normalized,
-        scope,
-        label: label || null,
-        prev: null,
-        next: null,
-        labelOccurrence: 0,
-      });
-    }
+    if (normalized.length < 2 || normalized.length > 60) return;
+    if (/^[|{}]|^\/\*|^Category:|^分类:/u.test(normalized)) return;
+    items.push({
+      start,
+      end: node.end,
+      path: node.path,
+      type: node.type,
+      text: normalized,
+      section,
+      sectionOccurrence: 0,
+      scope,
+      label: label || null,
+      prev: null,
+      next: null,
+      labelOccurrence: 0,
+    });
   };
 
+  const NON_RENDERABLE = new Set([
+    'template-name',
+    'module',
+    'module-name',
+    'attr-key',
+    'comment',
+    'nowiki',
+    'pre',
+    'code',
+    'math',
+    'syntaxhighlight',
+    'templatestyles',
+  ]);
+  const NON_RENDERABLE_EXT = new Set([
+    'style',
+    'script',
+    'nowiki',
+    'pre',
+    'code',
+    'math',
+    'syntaxhighlight',
+    'templatestyles',
+  ]);
+  const headingName = (node: AstIndexNode): string =>
+    simplify(
+      node.token
+        .toString()
+        .trim()
+        .replace(/^=+|=+$/g, '')
+        .replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, '$2')
+        .replace(/\[\[([^\]]+)\]\]/g, '$1')
+        .replace(/<[^>]*>/g, '')
+        .replace(/\s+/g, ' ')
+        .trim(),
+    );
+
   const walk = (
-    node: LocateToken,
+    node: AstIndexNode,
+    section = '',
     scope: ItemScope | null = null,
     label: string | null = null,
   ): void => {
-    const name = node.constructor.name;
-    if (name === 'ExtToken' && String(node.name).toLowerCase() === 'poem') {
+    if (NON_RENDERABLE.has(node.type)) return;
+    if (node.type === 'ext' && NON_RENDERABLE_EXT.has(node.name.toLowerCase())) return;
+    if (node.type === 'ext' && node.name.toLowerCase() === 'poem') {
       scope = {type: 'poem', index: poemCount++};
       label = null;
     }
-    if (name === 'ParameterToken') {
+    if (node.type === 'parameter') {
       const paramName = simplify(
-        String(node.childNodes?.[0] || '')
+        String(node.children[0]?.token.toString() || '')
           .replace(/\s+/g, ' ')
           .trim(),
       );
-      for (const child of (node.childNodes || []).slice(1)) walk(child, scope, paramName);
+      for (const child of node.children.slice(1)) walk(child, section, scope, paramName);
       return;
     }
-    if (name === 'TranscludeToken') {
-      for (const child of (node.childNodes || []).slice(1)) walk(child, scope, label);
+    if (node.type === 'transclude') {
+      for (const child of node.children.slice(1)) walk(child, section, scope, label);
       return;
     }
-    if (name === 'LinkToken') {
-      const raw = node.toString();
+    if (node.type === 'link') {
+      const raw = node.token.toString();
       const match = /^\[\[([^\]|]+)(?:\|([^\]]+))?\]\]$/.exec(raw);
-      add(
-        match ? match[2] || match[1] : raw,
-        node.getAbsoluteIndex(),
-        scope,
-        label,
-      );
+      add(match ? match[2] || match[1] : raw, node, node.start, section, scope, label);
       return;
     }
-    if (name === 'AstText') {
-      const raw = node.toString();
-      const base = node.getAbsoluteIndex();
+    if (node.type === 'text') {
+      const raw = node.token.toString();
+      const base = node.start;
       let cursor = 0;
       for (const part of raw.split(/[•·、,，;；\n]+/)) {
         const index = raw.indexOf(part, cursor);
-        add(part, base + Math.max(0, index), scope, label);
+        add(part, node, base + Math.max(0, index), section, scope, label);
         cursor = Math.max(cursor, index + part.length);
       }
       return;
     }
-    for (const child of node.childNodes || []) walk(child, scope, label);
+    for (const child of node.children) walk(child, section, scope, label);
   };
 
-  for (const child of tree.childNodes || []) walk(child);
+  walk(index.root);
   items.sort((a, b) => a.start - b.start);
+  const headings = index.nodes
+    .filter(node => node.type === 'heading' && node.level > 0 && node.level <= 2)
+    .sort((a, b) => a.start - b.start)
+    .map(node => ({start: node.start, text: headingName(node)}));
+  for (const item of items) {
+    let section = '';
+    for (const heading of headings) {
+      if (heading.start > item.start) break;
+      section = heading.text;
+    }
+    item.section = section;
+  }
   for (let index = 0; index < items.length; index++) {
     items[index].prev = index > 0 ? items[index - 1].text.slice(-24) : null;
     items[index].next =
       index < items.length - 1 ? items[index + 1].text.slice(0, 24) : null;
   }
 
+  const sectionCounts = new Map<string, number>();
   const labelCounts = new Map<string, number>();
   for (const item of items) {
+    const sectionKey = `${item.section}\u0001${item.text}`;
+    const sectionCount = (sectionCounts.get(sectionKey) || 0) + 1;
+    sectionCounts.set(sectionKey, sectionCount);
+    item.sectionOccurrence = sectionCount;
     if (!item.label) continue;
     const key = [
+      item.section,
       item.scope?.type || '',
       item.scope?.index ?? '',
       item.label,
@@ -158,12 +211,18 @@ export function extractItems(text: string, root?: unknown): LocateItem[] {
   return items;
 }
 
+export function extractItems(text: string, root?: unknown): LocateItem[] {
+  if (text.length > 300000) return [];
+  const token = (root ?? Parser.parse(text)) as Parameters<typeof buildAstIndex>[0];
+  return extractItemsFromIndex(buildAstIndex(token));
+}
+
 export function itemsFor(doc: LocateDocument, root?: unknown): LocateItem[] {
   const cached = itemCache.get(doc.uri.fsPath);
   if (cached && cached.version === doc.version) return cached.items;
   let items: LocateItem[] = [];
   try {
-    items = extractItems(doc.getText(), root);
+    items = extractItemsFromIndex(astIndexFor(doc, root));
   } catch {
     items = [];
   }
@@ -192,16 +251,49 @@ export function occurrenceOf(items: LocateItem[], index: number): number {
   return count;
 }
 
+export interface FindLineOptions {
+  fallback?: boolean;
+  section?: string;
+  occurrence?: number;
+}
+
 export function findLineByText(
   doc: LocateDocument,
   text: string,
   root?: unknown,
+  options: FindLineOptions = {},
 ): number {
   const needle = simplify(String(text || '').trim());
   if (!needle) return -1;
-  const items = itemsFor(doc, root);
-  const hit = items.find(item => item.text.includes(needle) || needle.includes(item.text));
+  const items = itemsFor(doc, root).filter(
+    item => options.section === undefined || item.section === options.section,
+  );
+  let hit: LocateItem | undefined;
+  let bestScore = 0;
+  for (const item of items) {
+    const score =
+      item.text === needle
+        ? 3
+        : item.text.includes(needle)
+          ? 2
+          : needle.includes(item.text)
+            ? 1
+            : 0;
+    if (score > bestScore) {
+      hit = item;
+      bestScore = score;
+    }
+  }
+  if (hit && options.occurrence !== undefined) {
+    const scoped = items.find(
+      item =>
+        item.text === hit!.text &&
+        item.sectionOccurrence === options.occurrence,
+    );
+    if (scoped) hit = scoped;
+  }
   if (hit) return doc.positionAt(hit.start).line;
+  if (options.fallback === false) return -1;
   for (let line = 0; line < doc.lineCount; line++) {
     if (simplify(doc.lineAt(line).text).includes(needle)) return line;
   }

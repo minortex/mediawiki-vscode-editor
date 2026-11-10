@@ -67,6 +67,8 @@ export interface LocateMessage {
   type: 'locate';
   sessionId: string;
   text: string;
+  section?: string;
+  occurrence?: number;
 }
 
 export interface RequestSaveMessage {
@@ -155,6 +157,7 @@ export interface ScrollMessage {
   sessionId: string;
   text: string;
   occurrence: number;
+  section?: string;
   scope?: unknown;
   label?: string | null;
   labelOccurrence?: number;

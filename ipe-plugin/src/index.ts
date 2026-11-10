@@ -141,6 +141,7 @@ interface ScrollMessage {
   sessionId: string
   text: string
   occurrence: number
+  section?: string
   scope?: ScrollScope
   label?: string
   labelOccurrence?: number
@@ -233,7 +234,13 @@ type OutgoingMessage =
       minor?: boolean
     }
   | {type: 'save'; sessionId: string; summary?: string; minor?: boolean}
-  | {type: 'locate'; sessionId: string; text: string}
+  | {
+      type: 'locate'
+      sessionId: string
+      text: string
+      section?: string
+      occurrence?: number
+    }
   | {type: 'save-confirmed'; sessionId: string; origin: string}
   | {type: 'open-result'; requestId: string; opened: boolean}
 
@@ -706,6 +713,7 @@ export default {
           scrollToOccurrence(
             msg.text,
             msg.occurrence,
+            msg.section,
             msg.scope,
             msg.label,
             msg.prev,
@@ -778,7 +786,7 @@ export default {
       return false
     }
 
-    function buildTextContext(root: Element): TextContext {
+    function buildTextContext(root: Element, scopeRange?: Range): TextContext {
       const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
       const nodes: Array<{node: Text; start: number; end: number}> = []
       let raw = ''
@@ -786,6 +794,7 @@ export default {
       while ((node = walker.nextNode())) {
         const parent = (node as Text).parentElement
         if (parent?.closest('script,style,.vc-preview')) continue
+        if (scopeRange && !scopeRange.intersectsNode(node)) continue
         const start = raw.length
         raw += node.nodeValue || ''
         nodes.push({node: node as Text, start, end: raw.length})
@@ -831,9 +840,30 @@ export default {
       return null
     }
 
+    function headingText(heading: Element): string {
+      const clone = heading.cloneNode(true) as Element
+      clone.querySelectorAll('.mw-editsection').forEach(item => item.remove())
+      return clone.textContent?.replace(/\s+/g, ' ').trim() || ''
+    }
+
+    function sectionRange(scope?: string): Range | undefined {
+      const root = document.querySelector('#mw-content-text')
+      if (!scope || !root) return undefined
+      const headings = [...root.querySelectorAll('h2')]
+      const index = headings.findIndex(heading => headingText(heading) === scope)
+      if (index < 0) return undefined
+      const range = document.createRange()
+      range.setStartBefore(headings[index])
+      const next = headings[index + 1]
+      if (next) range.setEndBefore(next)
+      else range.setEnd(root, root.childNodes.length)
+      return range
+    }
+
     function scrollToOccurrence(
       text: string,
       occurrence: number,
+      section?: string,
       scope?: ScrollScope,
       label?: string,
       prev?: string,
@@ -874,7 +904,8 @@ export default {
         }
         push(text, wanted)
       }
-      const context = buildTextContext(root)
+      const scoped = sectionRange(section)
+      const context = buildTextContext(root, scoped)
       for (const candidate of candidates) {
         const range = findRangeIn(context, candidate.needle, candidate.occurrence)
         if (!range) continue
@@ -931,7 +962,26 @@ export default {
       return true
     }
 
-    function textAtPoint(x: number, y: number): string | null {
+    interface PointText {
+      text: string
+      section: string
+      occurrence: number
+    }
+
+    function sectionForPoint(node: Node): string {
+      const root = document.querySelector('#mw-content-text')
+      if (!root) return ''
+      const headings = [...root.querySelectorAll('h2')]
+      let section = ''
+      for (const heading of headings) {
+        if (heading.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING) {
+          section = headingText(heading)
+        }
+      }
+      return section
+    }
+
+    function textAtPoint(x: number, y: number): PointText | null {
       const caretDocument = document as CaretDocument
       let range: Range | null = null
       if (caretDocument.caretRangeFromPoint) {
@@ -947,11 +997,34 @@ export default {
       if (!range || range.startContainer.nodeType !== Node.TEXT_NODE) return null
       const value = range.startContainer.nodeValue || ''
       const index = range.startOffset || 0
-      const text = value
-        .slice(Math.max(0, index - 40), Math.min(value.length, index + 40))
-        .replace(/\s+/g, ' ')
-        .trim()
-      return text.length >= 2 ? text : null
+      const whole = value.replace(/\s+/g, ' ').trim()
+      const text =
+        whole.length >= 2 && whole.length <= 60
+          ? whole
+          : value
+              .slice(Math.max(0, index - 40), Math.min(value.length, index + 40))
+              .replace(/\s+/g, ' ')
+              .trim()
+      if (text.length < 2) return null
+      const section = sectionForPoint(range.startContainer)
+      let occurrence = 1
+      try {
+        const prefix = document.createRange()
+        const root = document.querySelector('#mw-content-text')
+        const heading = [...(root?.querySelectorAll('h2') || [])].find(item => headingText(item) === section)
+        if (heading) prefix.setStartBefore(heading)
+        else if (root) prefix.setStart(root, 0)
+        else prefix.setStart(range.startContainer, 0)
+        prefix.setEnd(range.startContainer, index)
+        const before = prefix.toString().replace(/\s+/g, ' ')
+        let cursor = 0
+        occurrence = 1
+        while ((cursor = before.indexOf(text, cursor)) >= 0) {
+          occurrence++
+          cursor += text.length
+        }
+      } catch {}
+      return {text, section, occurrence}
     }
 
     // ---------- preview ----------
@@ -1310,8 +1383,16 @@ export default {
         window.open(editUrlFor(anchor.href), '_blank', 'noopener')
         return
       }
-      const text = textAtPoint(event.clientX, event.clientY)
-      if (text) send({type: 'locate', sessionId: session.id, text})
+      const point = textAtPoint(event.clientX, event.clientY)
+      if (point) {
+        send({
+          type: 'locate',
+          sessionId: session.id,
+          text: point.text,
+          section: point.section,
+          occurrence: point.occurrence,
+        })
+      }
     }
 
     // ---------- lifecycle ----------
