@@ -20,7 +20,7 @@ VSCode --保存--> 浏览器（action=parse 渲染预览）
 1. VSCode 扩展：
 
    ```sh
-   codium --install-extension dist/mediawiki-vscode-editor-0.11.0.vsix
+   codium --install-extension dist/mediawiki-vscode-editor-0.12.0.vsix
    # 或 code --install-extension ...
 
    ```

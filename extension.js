@@ -8,15 +8,16 @@ const { BrowserBridge } = require('./out/browser-bridge');
 const itemsUtil = require('./lib/items');
 const language = require('./lib/language');
 const wikis = require('./lib/wikis');
-const { normalizeOrigin } = require('./lib/wiki-config');
 const { SessionStore } = require('./out/session-store');
 const { SessionManager } = require('./out/session-manager');
+const { createSessionController } = require('./lib/session-controller');
 
 let bridge = null;
 let statusBar = null;
 let languageFeatures = null;
 let sessionStore = null;
 let sessionManager = null;
+let sessionController = null;
 const dirtyTimers = new Map(); // fsPath -> timeout
 const syncTimers = new Map(); // sessionId -> timeout
 
@@ -25,26 +26,6 @@ const DELETE_RESULTS = new Set(['saved', 'unchanged', 'discarded']);
 
 function config() {
   return vscode.workspace.getConfiguration('mediawikiEditor');
-}
-
-async function ensureSessionEditor(meta) {
-  let doc = vscode.workspace.textDocuments.find((d) => d.uri.fsPath === meta.fsPath);
-  if (!doc) {
-    try {
-      doc = await vscode.workspace.openTextDocument(vscode.Uri.file(meta.fsPath));
-    } catch {
-      return undefined;
-    }
-  }
-  if (languageFeatures) {
-    try {
-      doc = await languageFeatures.apply(doc, meta.wiki, meta.title);
-    } catch {}
-  }
-  await vscode.window.showTextDocument(doc, { preview: false });
-  if (languageFeatures) languageFeatures.check(doc, meta.wiki, meta.title).catch(() => {});
-  meta.state = 'detached';
-  return doc;
 }
 
 function safeName(title) {
@@ -103,6 +84,11 @@ function notifyDirty(doc) {
   bridge.broadcast({type: 'state', sessionId, dirty: doc.isDirty});
 }
 
+function clearDirty(fsPath) {
+  clearTimeout(dirtyTimers.get(fsPath));
+  dirtyTimers.delete(fsPath);
+}
+
 async function closeAndDelete(fsPath) {
   const doc = vscode.workspace.textDocuments.find((d) => d.uri.fsPath === fsPath);
   if (doc && doc.isDirty) {
@@ -146,275 +132,11 @@ async function locateInEditor(msg) {
   revealLine(editor, line);
 }
 
-async function handleRequestSave(msg) {
-  const meta = sessionManager?.get(msg.sessionId);
-  if (!meta) return;
-  const doc = vscode.workspace.textDocuments.find((d) => d.uri.fsPath === meta.fsPath);
-  if (!doc) return;
-  if (doc.isDirty) await doc.save();
-  const count = bridge.broadcast({
-    type: 'save',
-    sessionId: msg.sessionId,
-    text: doc.getText(),
-    summary: msg.summary,
-    minor: msg.minor,
-  });
-  if (!count) {
-    vscode.window.showWarningMessage('MediaWiki: 浏览器未连接，无法提交。');
-  }
-}
-
-async function openSession(msg, ws, wiki) {
-  const root = config().get('tempDir') || defaultDir();
-  const dir = wikis.directoryFor(root, wiki);
-  await fs.promises.mkdir(dir, { recursive: true });
-  const suffix = msg.section != null ? `.s${msg.section}` : '';
-  const fsPath = path.join(dir, `${safeName(msg.title)}${suffix}.${stamp()}.wiki`);
-
-  await fs.promises.writeFile(fsPath, msg.text, 'utf8');
-  let doc = await vscode.workspace.openTextDocument(vscode.Uri.file(fsPath));
-  if (languageFeatures) {
-    try {
-      doc = await languageFeatures.apply(doc, wiki, msg.title);
-    } catch {}
-  }
-  await vscode.window.showTextDocument(doc, { preview: false });
-  if (languageFeatures) languageFeatures.check(doc, wiki, msg.title).catch(() => {});
-
-  sessionManager?.add(msg.sessionId, {
-    fsPath,
-    ws,
-    title: msg.title,
-    section: msg.section ?? null,
-    wiki,
-    revid: msg.revid,
-    basetimestamp: msg.basetimestamp,
-    starttimestamp: msg.starttimestamp,
-    created: Date.now(),
-    state: 'attached',
-    autoRestore: true,
-  });
-
-  const label = msg.section != null ? `${msg.title} § ${msg.section}` : msg.title;
-  vscode.window.setStatusBarMessage(
-    `MediaWiki: 正在编辑 ${wiki.name} 的 ${label}，保存文件即刷新浏览器预览`,
-    8000
-  );
-}
-
-async function finishSession(msg) {
-  const meta = sessionManager?.get(msg.sessionId);
-  if (!meta) return;
-  clearTimeout(dirtyTimers.get(meta.fsPath));
-  dirtyTimers.delete(meta.fsPath);
-
-  if (!DELETE_RESULTS.has(msg.result)) {
-    // closed / 断线 / 未知状态：保留编辑器与文件，绝不自动删除
-    sessionManager?.markDraft(msg.sessionId);
-    vscode.window.showWarningMessage(
-      `MediaWiki: 编辑会话已断开，临时文件保留：${meta.fsPath}`
-    );
-    return;
-  }
-
-  sessionManager?.remove(msg.sessionId);
-  await closeAndDelete(meta.fsPath);
-  vscode.window.setStatusBarMessage(
-    msg.result === 'saved' ? 'MediaWiki: 已在浏览器提交保存' : 'MediaWiki: 编辑会话已结束',
-    5000
-  );
-}
-
-async function saveInPage(sessionId, text, summary, minor) {
-  const meta = sessionManager?.get(sessionId);
-  if (!meta?.ws || !bridge) {
-    vscode.window.showWarningMessage('MediaWiki: 浏览器未连接，无法提交。');
-    return {ok: false, error: '浏览器未连接'};
-  }
-  try {
-    const reply = await bridge.request(meta.ws, {type: 'save', sessionId, text, summary, minor}, 15000);
-    return {ok: !!reply.ok, error: reply.error};
-  } catch (error) {
-    vscode.window.showWarningMessage(`MediaWiki: 提交失败：${error.message}`);
-    return {ok: false, error: error.message};
-  }
-}
-
-function sameOrigin(a, b) {
-  try {
-    return normalizeOrigin(a) === normalizeOrigin(b);
-  } catch {
-    return false;
-  }
-}
-
-async function requestBrowserNavigate({wiki, title, fragment}) {
-  const meta = sessionManager?.values().find(
-    (item) => item.ws && sameOrigin(item.wiki.origin, wiki.origin)
-  );
-  if (!meta?.ws || !bridge) {
-    vscode.window.showWarningMessage('MediaWiki: 浏览器未连接，无法打开目标页面。');
-    return false;
-  }
-  try {
-    const reply = await bridge.request(meta.ws, {type: 'navigate-edit', title, fragment}, 5000);
-    if (!reply.opened) {
-      vscode.window.showWarningMessage(
-        'MediaWiki: 浏览器拦截了目标页面，请允许本站弹窗后重试。'
-      );
-    }
-    return !!reply.opened;
-  } catch (error) {
-    vscode.window.showWarningMessage(`MediaWiki: 打开目标页面失败：${error.message}`);
-    return false;
-  }
-}
-
-async function handleRegisterWiki(msg, ws, context) {
-  const requestId = msg.requestId;
-  const reply = (payload) => {
-    try {
-      ws.send(JSON.stringify({type: 'wiki-registered', requestId, ...payload}));
-    } catch {}
-  };
-  try {
-    if (!requestId) throw new Error('缺少 requestId');
-    if (!ws.origin || !msg.origin || !sameOrigin(msg.origin, ws.origin)) {
-      throw new Error('站点来源与浏览器连接不一致');
-    }
-    const before = wikis.find(context, msg.origin);
-    const entry = await wikis.upsert(context, {
-      origin: msg.origin,
-      api: msg.api,
-      name: msg.name,
-      siteinfo: msg.siteinfo,
-    });
-    if (!before || before.siteinfoHash !== entry.siteinfoHash) {
-      languageFeatures?.refresh();
-    }
-    reply({ok: true, wiki: {id: entry.id, name: entry.name, origin: entry.origin}});
-  } catch (error) {
-    reply({ok: false, error: error.message});
-  }
-}
-
-
-function normalizePageName(value) {
-  return String(value || '').replace(/_/gu, ' ').replace(/\s+/gu, ' ').trim().toLowerCase();
-}
-
-function pageUrl(wiki, title) {
-  const encoded = encodeURIComponent(String(title).replace(/ /gu, '_'))
-    .replace(/%2F/giu, '/')
-    .replace(/%3A/giu, ':');
-  try {
-    return new URL((wiki.articlePath || `${wiki.origin}/$1`).replace(/\$1/gu, encoded), wiki.origin).href;
-  } catch {
-    return undefined;
-  }
-}
-
-async function handleSessionQuery(msg, ws, context) {
-  const requestId = msg.requestId;
-  const reply = (payload) => {
-    try {
-      ws.send(JSON.stringify({type: 'session-result', requestId, ...payload}));
-    } catch {}
-  };
-  try {
-    if (!requestId) throw new Error('缺少 requestId');
-    if (!ws.origin || !msg.origin || !sameOrigin(msg.origin, ws.origin)) {
-      throw new Error('站点来源与浏览器连接不一致');
-    }
-    const title = normalizePageName(msg.title);
-    if (!title) return reply({ok: true, session: null});
-    const candidates = (sessionManager ? sessionManager.entries() : [])
-      .filter(([, meta]) => sameOrigin(meta.wiki.origin, msg.origin)
-        && normalizePageName(meta.title) === title
-        && (meta.state !== 'draft' || meta.autoRestore))
-      .sort(([, a], [, b]) => {
-        const af = a.section == null ? 0 : 1;
-        const bf = b.section == null ? 0 : 1;
-        return af - bf || b.created - a.created;
-      });
-    let picked;
-    for (const [sessionId, meta] of candidates) {
-      if (meta.state === 'draft') {
-        const editor = await ensureSessionEditor(meta);
-        if (!editor) continue;
-      }
-      let text;
-      try {
-        const doc = vscode.workspace.textDocuments.find((d) => d.uri.fsPath === meta.fsPath);
-        text = doc ? doc.getText() : await fs.promises.readFile(meta.fsPath, 'utf8');
-      } catch {
-        continue;
-      }
-      picked = {sessionId, meta, text};
-      break;
-    }
-    if (!picked) return reply({ok: true, session: null});
-    const {sessionId, meta, text} = picked;
-    if (meta.ws && meta.ws !== ws) {
-      try {
-        meta.ws.send(JSON.stringify({type: 'preempted', sessionId}));
-      } catch {}
-    }
-    sessionManager?.attach(sessionId, ws);
-    sessionManager?.markAttached(sessionId);
-    const doc = vscode.workspace.textDocuments.find((d) => d.uri.fsPath === meta.fsPath);
-    reply({
-      ok: true,
-      session: {
-        sessionId,
-        title: meta.title,
-        section: meta.section,
-        text,
-        dirty: !!doc?.isDirty,
-        state: meta.state,
-        revid: meta.revid,
-        basetimestamp: meta.basetimestamp,
-        starttimestamp: meta.starttimestamp,
-        wiki: {id: meta.wiki.id, name: meta.wiki.name, origin: meta.wiki.origin},
-      },
-    });
-    updateStatus();
-  } catch (error) {
-    reply({ok: false, error: error.message});
-  }
-}
-
-
-async function restoreDraft() {
-  const drafts = sessionManager ? sessionManager.drafts() : [];
-  if (!drafts.length) {
-    vscode.window.showInformationMessage('MediaWiki: 没有可恢复的草稿。');
-    return;
-  }
-  const picked = await vscode.window.showQuickPick(
-    drafts.map(([sessionId, meta]) => ({
-      label: meta.title,
-      description: meta.section == null ? meta.wiki.name : `${meta.wiki.name} § ${meta.section}`,
-      detail: meta.fsPath,
-      sessionId,
-      meta,
-    })),
-    {placeHolder: '选择要恢复的草稿'}
-  );
-  if (!picked) return;
-  const doc = await ensureSessionEditor(picked.meta);
-  if (!doc) {
-    vscode.window.showErrorMessage('MediaWiki: 草稿文件不存在，无法恢复。');
-    return;
-  }
-  vscode.window.showInformationMessage(`MediaWiki: 已恢复 ${picked.meta.title} 的草稿。`);
-}
-
 function handleMessage(msg, ws, context) {
   if (msg.type === 'register-wiki') {
-    handleRegisterWiki(msg, ws, context).catch(() => {});
+    sessionController.registerWiki(msg, ws).catch(() => {});
   } else if (msg.type === 'session-query') {
-    handleSessionQuery(msg, ws, context).catch(() => {});
+    sessionController.query(msg, ws).catch(() => {});
   } else if (msg.type === 'open') {
     const wiki = wikis.resolve(context, msg.wiki, ws.origin);
     if (!wiki) {
@@ -423,18 +145,17 @@ function handleMessage(msg, ws, context) {
       );
       return;
     }
-    openSession(msg, ws, wiki).catch((err) =>
+    sessionController.open(msg, ws, wiki).catch((err) =>
       vscode.window.showErrorMessage(`MediaWiki: ${err.message}`)
     );
   } else if (msg.type === 'finish') {
-    finishSession(msg).catch(() => {});
+    sessionController.finish(msg).catch(() => {});
   } else if (msg.type === 'locate') {
     locateInEditor(msg).catch(() => {});
   } else if (msg.type === 'request-save') {
-    handleRequestSave(msg).catch((err) =>
+    sessionController.requestSave(msg).catch((err) =>
       vscode.window.showErrorMessage(`MediaWiki: ${err.message}`)
     );
-
   }
 }
 
@@ -451,7 +172,26 @@ function activate(context) {
   );
   sessionManager = new SessionManager(sessionStore, () => updateStatus());
   sessionManager.load();
-  languageFeatures = language.registerLanguageFeatures(context, {navigateEdit: requestBrowserNavigate});
+  sessionController = createSessionController({
+    vscode,
+    fs,
+    path,
+    sessionManager,
+    getBridge: () => bridge,
+    wikis,
+    context,
+    config,
+    defaultDir,
+    safeName,
+    stamp,
+    closeAndDelete,
+    updateStatus,
+    clearDirty,
+    getLanguageFeatures: () => languageFeatures,
+  });
+  languageFeatures = language.registerLanguageFeatures(context, {
+    navigateEdit: (request) => sessionController.navigate(request),
+  });
 
   bridge = new BrowserBridge();
   bridge.start({
@@ -504,15 +244,15 @@ function activate(context) {
         value: '[VSCode]',
       });
       if (summary === undefined) return;
-      const result = await saveInPage(sessionId, editor.document.getText(), summary, false);
+      const result = await sessionController.saveInPage(sessionId, editor.document.getText(), summary, false);
       if (result.ok) {
-        await finishSession({ sessionId, result: 'saved' });
+        await sessionController.finish({ sessionId, result: 'saved' });
         vscode.window.showInformationMessage('MediaWiki: 已通过 InPageEdit 保存。');
       } else {
         vscode.window.showErrorMessage(`MediaWiki: 保存失败：${result.error}`);
       }
     }),
-    vscode.commands.registerCommand('mediawikiEditor.restoreDraft', () => restoreDraft()),
+    vscode.commands.registerCommand('mediawikiEditor.restoreDraft', () => sessionController.restoreDraft()),
     vscode.commands.registerCommand('mediawikiEditor.openPage', async () => {
       const editor = vscode.window.activeTextEditor;
       if (!editor) {
@@ -525,7 +265,7 @@ function activate(context) {
         vscode.window.showInformationMessage('MediaWiki: 当前文件不是编辑会话。');
         return;
       }
-      const url = pageUrl(meta.wiki, meta.title);
+      const url = sessionController.pageUrl(meta.wiki, meta.title);
       if (!url) {
         vscode.window.showErrorMessage('MediaWiki: 无法生成页面地址。');
         return;
