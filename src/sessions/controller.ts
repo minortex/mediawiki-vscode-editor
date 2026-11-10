@@ -418,12 +418,10 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
         return;
       }
       const {sessionId, meta, text} = picked;
-      const sameWindow =
-        !!msg.windowId && !!meta.windowId && msg.windowId === meta.windowId;
       const socketAlive =
         !!meta.ws &&
         (meta.ws.readyState === undefined || meta.ws.readyState === 1);
-      if (socketAlive && meta.ws !== ws && !sameWindow) {
+      if (socketAlive && meta.ws !== ws) {
         reply({ok: true, session: null, busy: true});
         return;
       }

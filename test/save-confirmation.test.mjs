@@ -201,7 +201,7 @@ test('another window cannot preempt an active edit session', async () => {
     false,
   );
 
-  const reload = {
+  const sameWindowRetry = {
     origin: 'https://example.org',
     messages: [],
     send(value) {
@@ -211,6 +211,26 @@ test('another window cannot preempt an active edit session', async () => {
   await controller.query(
     {
       requestId: 'q2',
+      origin: 'https://example.org',
+      title: 'Page',
+      windowId: 'window-owner',
+    },
+    sameWindowRetry,
+  );
+  assert.equal(sameWindowRetry.messages.at(-1).busy, true);
+  assert.equal(manager.get('s1')?.ws, owner);
+
+  manager.detachWs(owner);
+  const reload = {
+    origin: 'https://example.org',
+    messages: [],
+    send(value) {
+      this.messages.push(JSON.parse(value));
+    },
+  };
+  await controller.query(
+    {
+      requestId: 'q3',
       origin: 'https://example.org',
       title: 'Page',
       windowId: 'window-owner',

@@ -704,15 +704,26 @@ export default {
               return
             }
             if (existing.busy) {
-              const pending = pendingStart
-              pendingStart = null
-              if (pending) {
-                startEdit(pending).catch(error => {
-                  status(
-                    `启动失败：${error instanceof Error ? error.message : String(error)}`,
-                  )
-                })
-              }
+              // 页面刷新时旧 WebSocket 可能还没完成 close；稍后重查一次。
+              window.setTimeout(async () => {
+                try {
+                  const retry = await queryExistingSession(true)
+                  if (retry.session) {
+                    await adoptSession(retry.session)
+                    pendingStart = null
+                    return
+                  }
+                  const pending = pendingStart
+                  pendingStart = null
+                  if (pending) {
+                    startEdit(pending).catch(error => {
+                      status(
+                        `启动失败：${error instanceof Error ? error.message : String(error)}`,
+                      )
+                    })
+                  }
+                } catch {}
+              }, 500)
               return
             }
           } catch (error) {
