@@ -12,6 +12,7 @@ export interface SessionMeta {
   revid?: number;
   basetimestamp?: string;
   starttimestamp?: string;
+  windowId?: string;
   created: number;
   state: SessionState;
   autoRestore: boolean;
@@ -39,6 +40,7 @@ export class SessionManager {
         revid: entry.revid,
         basetimestamp: entry.basetimestamp,
         starttimestamp: entry.starttimestamp,
+        windowId: entry.windowId,
         created: entry.created || Date.now(),
         state: 'draft',
         autoRestore: entry.autoRestore !== false,
@@ -68,6 +70,7 @@ export class SessionManager {
       revid: meta.revid,
       basetimestamp: meta.basetimestamp,
       starttimestamp: meta.starttimestamp,
+      windowId: meta.windowId,
       created: meta.created,
       state: meta.state,
       autoRestore: meta.autoRestore,

@@ -146,6 +146,7 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
       revid: msg.revid,
       basetimestamp: msg.basetimestamp,
       starttimestamp: msg.starttimestamp,
+      windowId: msg.windowId,
       created: Date.now(),
       state: 'attached',
       autoRestore: true,
@@ -353,6 +354,7 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
     const reply = (payload: {
       ok: boolean;
       session?: SessionResultMessage['session'];
+      busy?: boolean;
       error?: string;
     }): void => {
       const response: SessionResultMessage = {
@@ -360,6 +362,7 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
         requestId,
         ok: payload.ok,
         session: payload.session,
+        busy: payload.busy,
         error: payload.error,
       };
       try {
@@ -415,6 +418,15 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
         return;
       }
       const {sessionId, meta, text} = picked;
+      const sameWindow =
+        !!msg.windowId && !!meta.windowId && msg.windowId === meta.windowId;
+      const socketAlive =
+        !!meta.ws &&
+        (meta.ws.readyState === undefined || meta.ws.readyState === 1);
+      if (socketAlive && meta.ws !== ws && !sameWindow) {
+        reply({ok: true, session: null, busy: true});
+        return;
+      }
       if (meta.ws && meta.ws !== ws) {
         try {
           meta.ws.send(JSON.stringify({type: 'preempted', sessionId}));

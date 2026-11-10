@@ -30,6 +30,7 @@ export interface OpenMessage {
   revid?: number;
   basetimestamp?: string;
   starttimestamp?: string;
+  windowId?: string;
   wiki?: string;
 }
 
@@ -47,6 +48,7 @@ export interface SessionQueryMessage {
   requestId: string;
   origin: string;
   title: string;
+  windowId?: string;
 }
 
 export interface OpenResultMessage {
@@ -132,6 +134,7 @@ export interface SessionResultMessage {
   requestId: string;
   ok: boolean;
   session?: SessionSnapshot | null;
+  busy?: boolean;
   error?: string;
 }
 

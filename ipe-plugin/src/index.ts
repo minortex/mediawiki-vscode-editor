@@ -115,7 +115,13 @@ interface SessionResultMessage {
   requestId: string
   ok: boolean
   session?: SessionInfo | null
+  busy?: boolean
   error?: string
+}
+
+interface SessionQueryResult {
+  session: SessionInfo | null
+  busy: boolean
 }
 
 interface NavigateEditMessage {
@@ -236,6 +242,7 @@ type OutgoingMessage =
       requestId: string
       origin: string
       title: string | undefined
+      windowId: string
     }
   | {
       type: 'open'
@@ -246,6 +253,7 @@ type OutgoingMessage =
       revid?: number
       basetimestamp?: string
       starttimestamp: string
+      windowId: string
       wiki: string
     }
   | {
@@ -320,6 +328,22 @@ export default {
   inject: ['quickEdit', 'quickUpload', 'templatesUsed', 'quickDiff'],
   apply(ctx: InPageEdit) {
     const API = apiUrl()
+    const windowId = (() => {
+      try {
+        const key = 'mwe-ipe-window-id'
+        let value = sessionStorage.getItem(key)
+        if (!value) {
+          value =
+            typeof crypto !== 'undefined' && 'randomUUID' in crypto
+              ? crypto.randomUUID()
+              : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+          sessionStorage.setItem(key, value)
+        }
+        return value
+      } catch {
+        return `${Date.now()}-${Math.random().toString(36).slice(2)}`
+      }
+    })()
     const templatesUsed = (ctx as InPageEdit & {templatesUsed?: TemplatesUsedService}).templatesUsed
 
     let socket: WebSocket | null = null
@@ -335,9 +359,9 @@ export default {
     let registerSeq = 0
     const registerWaiters: Record<string, Waiter<unknown>> = {}
     let pendingStart: QuickEditEventPayload | null = null
-    let sessionQueryPromise: Promise<SessionInfo | null> | null = null
+    let sessionQueryPromise: Promise<SessionQueryResult> | null = null
     let sessionQuerySeq = 0
-    const sessionWaiters: Record<string, Waiter<SessionInfo | null>> = {}
+    const sessionWaiters: Record<string, Waiter<SessionQueryResult>> = {}
     let pendingConfirm: PendingConfirm | null = null
     let pendingConfirmSent = false
 
@@ -674,9 +698,21 @@ export default {
           try {
             await ensureWikiRegistered()
             const existing = await queryExistingSession()
-            if (existing) {
-              await adoptSession(existing)
+            if (existing.session) {
+              await adoptSession(existing.session)
               pendingStart = null
+              return
+            }
+            if (existing.busy) {
+              const pending = pendingStart
+              pendingStart = null
+              if (pending) {
+                startEdit(pending).catch(error => {
+                  status(
+                    `启动失败：${error instanceof Error ? error.message : String(error)}`,
+                  )
+                })
+              }
               return
             }
           } catch (error) {
@@ -1261,11 +1297,11 @@ export default {
       document.body.classList.remove('mwe-ipe-editing')
     }
 
-    function queryExistingSession(): Promise<SessionInfo | null> {
-      if (sessionQueryPromise) return sessionQueryPromise
-      if (!connected) return Promise.resolve(null)
+    function queryExistingSession(force = false): Promise<SessionQueryResult> {
+      if (!force && sessionQueryPromise) return sessionQueryPromise
+      if (!connected) return Promise.resolve({session: null, busy: false})
       const requestId = `session-${Date.now()}-${++sessionQuerySeq}`
-      sessionQueryPromise = new Promise<SessionInfo | null>((resolve, reject) => {
+      sessionQueryPromise = new Promise<SessionQueryResult>((resolve, reject) => {
         const timer = window.setTimeout(() => {
           delete sessionWaiters[requestId]
           reject(new Error('扩展未响应会话查询'))
@@ -1276,6 +1312,7 @@ export default {
           requestId,
           origin: location.origin,
           title: getMwConfig<string>('wgPageName'),
+          windowId,
         })) {
           clearTimeout(timer)
           delete sessionWaiters[requestId]
@@ -1294,7 +1331,7 @@ export default {
       clearTimeout(waiter.timer)
       delete sessionWaiters[msg.requestId]
       if (!msg.ok) waiter.reject(new Error(msg.error || '会话查询失败'))
-      else waiter.resolve(msg.session || null)
+      else waiter.resolve({session: msg.session || null, busy: !!msg.busy})
     }
 
     async function adoptSession(info: SessionInfo): Promise<void> {
@@ -1335,9 +1372,19 @@ export default {
       }
       try {
         await ensureWikiRegistered()
-        const existing = await queryExistingSession()
-        if (existing) {
-          await adoptSession(existing)
+        const existing = await queryExistingSession(true)
+        if (existing.busy) {
+          try {
+            payload.modal?.close()
+          } catch {}
+          notifyOffline(
+            '该页面已经在另一个浏览器窗口或 VSCode 编辑会话中。请先关闭那边的编辑会话后再试。',
+            '页面已在编辑中',
+          )
+          return
+        }
+        if (existing.session) {
+          await adoptSession(existing.session)
           return
         }
       } catch (error) {
@@ -1373,6 +1420,7 @@ export default {
         revid: revision?.revid,
         basetimestamp: revision?.timestamp,
         starttimestamp: new Date().toISOString(),
+        windowId,
         wiki: location.origin,
       })
     }

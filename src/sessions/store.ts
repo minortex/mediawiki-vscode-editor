@@ -12,6 +12,7 @@ export interface StoredSession {
   revid?: number;
   basetimestamp?: string;
   starttimestamp?: string;
+  windowId?: string;
   created: number;
   state: SessionState;
   autoRestore: boolean;

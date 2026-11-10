@@ -171,3 +171,54 @@ test('an edit conflict writes git-style markers into the open document', async (
   assert.equal(manager.get('s1')?.basetimestamp, '2026-11-10T00:00:00Z');
   fs.rmSync(dir, {recursive: true, force: true});
 });
+
+test('another window cannot preempt an active edit session', async () => {
+  const {dir, manager, controller} = fixture();
+  const owner = {origin: 'https://example.org', send() {}};
+  manager.attach('s1', owner);
+  manager.get('s1').windowId = 'window-owner';
+  const intruder = {
+    origin: 'https://example.org',
+    messages: [],
+    send(value) {
+      this.messages.push(JSON.parse(value));
+    },
+  };
+  await controller.query(
+    {
+      requestId: 'q1',
+      origin: 'https://example.org',
+      title: 'Page',
+      windowId: 'window-intruder',
+    },
+    intruder,
+  );
+  assert.equal(intruder.messages.at(-1).busy, true);
+  assert.equal(intruder.messages.at(-1).session, null);
+  assert.equal(manager.get('s1')?.ws, owner);
+  assert.equal(
+    intruder.messages.some(message => message.type === 'preempted'),
+    false,
+  );
+
+  const reload = {
+    origin: 'https://example.org',
+    messages: [],
+    send(value) {
+      this.messages.push(JSON.parse(value));
+    },
+  };
+  await controller.query(
+    {
+      requestId: 'q2',
+      origin: 'https://example.org',
+      title: 'Page',
+      windowId: 'window-owner',
+    },
+    reload,
+  );
+  assert.equal(reload.messages.at(-1).busy, undefined);
+  assert.equal(reload.messages.at(-1).session.sessionId, 's1');
+  assert.equal(manager.get('s1')?.ws, reload);
+  fs.rmSync(dir, {recursive: true, force: true});
+});
