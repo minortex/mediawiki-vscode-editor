@@ -4,71 +4,26 @@ const vscode = require('vscode');
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
-const { startWsServer, broadcast } = require('./lib/ws-server');
+const { BrowserBridge } = require('./out/browser-bridge');
 const language = require('./lib/language');
 const wikis = require('./lib/wikis');
 const { normalizeOrigin } = require('./lib/wiki-config');
 const { SessionStore } = require('./out/session-store');
+const { SessionManager } = require('./out/session-manager');
 
-let wss = null;
+let bridge = null;
 let statusBar = null;
 let languageFeatures = null;
 let sessionStore = null;
-
-const sessions = new Map(); // sessionId -> { fsPath, ws, title, section }
-const byPath = new Map(); // fsPath -> sessionId
-const wsSessions = new Map(); // ws -> Set<sessionId>
+let sessionManager = null;
 const dirtyTimers = new Map(); // fsPath -> timeout
 const syncTimers = new Map(); // sessionId -> timeout
-const navigateWaiters = new Map(); // requestId -> { resolve, timer }
-let navigateSeq = 0;
 
 // 只有这些结果代表用户在页面上明确确认过，才允许删除临时文件
 const DELETE_RESULTS = new Set(['saved', 'unchanged', 'discarded']);
 
 function config() {
   return vscode.workspace.getConfiguration('mediawikiEditor');
-}
-
-function serializeSession(sessionId, meta) {
-  return {
-    sessionId,
-    fsPath: meta.fsPath,
-    title: meta.title,
-    section: meta.section,
-    wiki: meta.wiki,
-    revid: meta.revid,
-    basetimestamp: meta.basetimestamp,
-    starttimestamp: meta.starttimestamp,
-    created: meta.created,
-    state: meta.state,
-    autoRestore: !!meta.autoRestore,
-  };
-}
-
-function persistSessions() {
-  if (!sessionStore) return;
-  sessionStore.save([...sessions].map(([sessionId, meta]) => serializeSession(sessionId, meta)));
-}
-
-function loadSessions() {
-  if (!sessionStore) return;
-  for (const entry of sessionStore.load()) {
-    sessions.set(entry.sessionId, {
-      fsPath: entry.fsPath,
-      ws: null,
-      title: entry.title,
-      section: entry.section ?? null,
-      wiki: entry.wiki,
-      revid: entry.revid,
-      basetimestamp: entry.basetimestamp,
-      starttimestamp: entry.starttimestamp,
-      created: entry.created || Date.now(),
-      state: 'draft',
-      autoRestore: entry.autoRestore !== false,
-    });
-    byPath.set(entry.fsPath, entry.sessionId);
-  }
 }
 
 async function ensureSessionEditor(meta) {
@@ -119,9 +74,7 @@ function stamp(date = new Date()) {
 
 function updateStatus() {
   if (!statusBar) return;
-  const connected = wss
-    ? [...wss.clients].filter((c) => c.readyState === 1).length
-    : 0;
+  const connected = bridge?.connectionCount || 0;
   statusBar.text = connected
     ? '$(vm-active) MediaWiki: 已连接'
     : '$(vm-outline) MediaWiki: 等待浏览器';
@@ -130,9 +83,9 @@ function updateStatus() {
 }
 
 function push(doc) {
-  const sessionId = byPath.get(doc.uri.fsPath);
-  if (!sessionId || !wss) return false;
-  const count = broadcast(wss, {
+  const sessionId = sessionManager?.idForPath(doc.uri.fsPath);
+  if (!sessionId || !bridge) return false;
+  const count = bridge.broadcast({
     type: 'update',
     sessionId,
     text: doc.getText(),
@@ -144,9 +97,9 @@ function push(doc) {
 }
 
 function notifyDirty(doc) {
-  const sessionId = byPath.get(doc.uri.fsPath);
-  if (!sessionId || !wss) return;
-  broadcast(wss, { type: 'state', sessionId, dirty: doc.isDirty });
+  const sessionId = sessionManager?.idForPath(doc.uri.fsPath);
+  if (!sessionId || !bridge) return;
+  bridge.broadcast({type: 'state', sessionId, dirty: doc.isDirty});
 }
 
 async function closeAndDelete(fsPath) {
@@ -322,7 +275,7 @@ function revealLine(editor, line) {
 
 async function locateInEditor(msg) {
   if (!msg.text) return;
-  const meta = sessions.get(msg.sessionId);
+  const meta = sessionManager?.get(msg.sessionId);
   if (!meta) return;
   const doc = vscode.workspace.textDocuments.find((d) => d.uri.fsPath === meta.fsPath);
   if (!doc) return;
@@ -333,12 +286,12 @@ async function locateInEditor(msg) {
 }
 
 async function handleRequestSave(msg) {
-  const meta = sessions.get(msg.sessionId);
+  const meta = sessionManager?.get(msg.sessionId);
   if (!meta) return;
   const doc = vscode.workspace.textDocuments.find((d) => d.uri.fsPath === meta.fsPath);
   if (!doc) return;
   if (doc.isDirty) await doc.save();
-  const count = broadcast(wss, {
+  const count = bridge.broadcast({
     type: 'save',
     sessionId: msg.sessionId,
     text: doc.getText(),
@@ -367,11 +320,11 @@ async function openSession(msg, ws, wiki) {
   await vscode.window.showTextDocument(doc, { preview: false });
   if (languageFeatures) languageFeatures.check(doc, wiki, msg.title).catch(() => {});
 
-  sessions.set(msg.sessionId, {
+  sessionManager?.add(msg.sessionId, {
     fsPath,
     ws,
     title: msg.title,
-    section: msg.section,
+    section: msg.section ?? null,
     wiki,
     revid: msg.revid,
     basetimestamp: msg.basetimestamp,
@@ -380,9 +333,6 @@ async function openSession(msg, ws, wiki) {
     state: 'attached',
     autoRestore: true,
   });
-  byPath.set(fsPath, msg.sessionId);
-  wsSessions.get(ws)?.add(msg.sessionId);
-  persistSessions();
 
   const label = msg.section != null ? `${msg.title} § ${msg.section}` : msg.title;
   vscode.window.setStatusBarMessage(
@@ -392,52 +342,42 @@ async function openSession(msg, ws, wiki) {
 }
 
 async function finishSession(msg) {
-  const meta = sessions.get(msg.sessionId);
+  const meta = sessionManager?.get(msg.sessionId);
   if (!meta) return;
-  sessions.delete(msg.sessionId);
-  byPath.delete(meta.fsPath);
-  wsSessions.get(meta.ws)?.delete(msg.sessionId);
   clearTimeout(dirtyTimers.get(meta.fsPath));
   dirtyTimers.delete(meta.fsPath);
 
   if (!DELETE_RESULTS.has(msg.result)) {
     // closed / 断线 / 未知状态：保留编辑器与文件，绝不自动删除
+    sessionManager?.markDraft(msg.sessionId);
     vscode.window.showWarningMessage(
       `MediaWiki: 编辑会话已断开，临时文件保留：${meta.fsPath}`
     );
     return;
   }
 
+  sessionManager?.remove(msg.sessionId);
   await closeAndDelete(meta.fsPath);
-  persistSessions();
   vscode.window.setStatusBarMessage(
     msg.result === 'saved' ? 'MediaWiki: 已在浏览器提交保存' : 'MediaWiki: 编辑会话已结束',
     5000
   );
 }
 
-const saveWaiters = new Map();
-
-function saveInPage(sessionId, text, summary, minor) {
-  return new Promise((resolve) => {
-    if (!sessions.has(sessionId) || !wss) {
-      resolve({ ok: false, error: '编辑会话不存在' });
-      return;
-    }
-    const timer = setTimeout(() => {
-      saveWaiters.delete(sessionId);
-      resolve({ ok: false, error: '页面未响应保存请求' });
-    }, 15000);
-    saveWaiters.set(sessionId, { resolve, timer });
-    const count = broadcast(wss, { type: 'save', sessionId, text, summary, minor });
-    if (!count) {
-      clearTimeout(timer);
-      saveWaiters.delete(sessionId);
-      resolve({ ok: false, error: '浏览器未连接' });
-    }
-  });
+async function saveInPage(sessionId, text, summary, minor) {
+  const meta = sessionManager?.get(sessionId);
+  if (!meta?.ws || !bridge) {
+    vscode.window.showWarningMessage('MediaWiki: 浏览器未连接，无法提交。');
+    return {ok: false, error: '浏览器未连接'};
+  }
+  try {
+    const reply = await bridge.request(meta.ws, {type: 'save', sessionId, text, summary, minor}, 15000);
+    return {ok: !!reply.ok, error: reply.error};
+  } catch (error) {
+    vscode.window.showWarningMessage(`MediaWiki: 提交失败：${error.message}`);
+    return {ok: false, error: error.message};
+  }
 }
-
 
 function sameOrigin(a, b) {
   try {
@@ -447,30 +387,26 @@ function sameOrigin(a, b) {
   }
 }
 
-function requestBrowserNavigate({wiki, title, fragment}) {
-  const meta = [...sessions.values()].find(
+async function requestBrowserNavigate({wiki, title, fragment}) {
+  const meta = sessionManager?.values().find(
     (item) => item.ws && sameOrigin(item.wiki.origin, wiki.origin)
   );
-  if (!meta?.ws) {
+  if (!meta?.ws || !bridge) {
     vscode.window.showWarningMessage('MediaWiki: 浏览器未连接，无法打开目标页面。');
-    return Promise.resolve(false);
+    return false;
   }
-  const requestId = `nav-${++navigateSeq}`;
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => {
-      navigateWaiters.delete(requestId);
-      vscode.window.showWarningMessage('MediaWiki: 浏览器未响应打开页面请求。');
-      resolve(false);
-    }, 5000);
-    navigateWaiters.set(requestId, {resolve, timer});
-    try {
-      meta.ws.send(JSON.stringify({type: 'navigate-edit', requestId, title, fragment}));
-    } catch {
-      clearTimeout(timer);
-      navigateWaiters.delete(requestId);
-      resolve(false);
+  try {
+    const reply = await bridge.request(meta.ws, {type: 'navigate-edit', title, fragment}, 5000);
+    if (!reply.opened) {
+      vscode.window.showWarningMessage(
+        'MediaWiki: 浏览器拦截了目标页面，请允许本站弹窗后重试。'
+      );
     }
-  });
+    return !!reply.opened;
+  } catch (error) {
+    vscode.window.showWarningMessage(`MediaWiki: 打开目标页面失败：${error.message}`);
+    return false;
+  }
 }
 
 async function handleRegisterWiki(msg, ws, context) {
@@ -531,7 +467,7 @@ async function handleSessionQuery(msg, ws, context) {
     }
     const title = normalizePageName(msg.title);
     if (!title) return reply({ok: true, session: null});
-    const candidates = [...sessions]
+    const candidates = (sessionManager ? sessionManager.entries() : [])
       .filter(([, meta]) => sameOrigin(meta.wiki.origin, msg.origin)
         && normalizePageName(meta.title) === title
         && (meta.state !== 'draft' || meta.autoRestore))
@@ -562,14 +498,10 @@ async function handleSessionQuery(msg, ws, context) {
       try {
         meta.ws.send(JSON.stringify({type: 'preempted', sessionId}));
       } catch {}
-      wsSessions.get(meta.ws)?.delete(sessionId);
     }
-    meta.ws = ws;
-    meta.state = 'attached';
-    meta.autoRestore = true;
-    wsSessions.get(ws)?.add(sessionId);
+    sessionManager?.attach(sessionId, ws);
+    sessionManager?.markAttached(sessionId);
     const doc = vscode.workspace.textDocuments.find((d) => d.uri.fsPath === meta.fsPath);
-    persistSessions();
     reply({
       ok: true,
       session: {
@@ -593,7 +525,7 @@ async function handleSessionQuery(msg, ws, context) {
 
 
 async function restoreDraft() {
-  const drafts = [...sessions].filter(([, meta]) => meta.state === 'draft');
+  const drafts = sessionManager ? sessionManager.drafts() : [];
   if (!drafts.length) {
     vscode.window.showInformationMessage('MediaWiki: 没有可恢复的草稿。');
     return;
@@ -614,25 +546,11 @@ async function restoreDraft() {
     vscode.window.showErrorMessage('MediaWiki: 草稿文件不存在，无法恢复。');
     return;
   }
-  byPath.set(picked.meta.fsPath, picked.sessionId);
-  persistSessions();
   vscode.window.showInformationMessage(`MediaWiki: 已恢复 ${picked.meta.title} 的草稿。`);
 }
 
 function handleMessage(msg, ws, context) {
-  if (msg.type === 'open-result') {
-    const pending = navigateWaiters.get(msg.requestId);
-    if (pending) {
-      clearTimeout(pending.timer);
-      navigateWaiters.delete(msg.requestId);
-      pending.resolve(!!msg.opened);
-      if (!msg.opened) {
-        vscode.window.showWarningMessage(
-          'MediaWiki: 浏览器拦截了目标页面，请允许本站弹窗后重试。'
-        );
-      }
-    }
-  } else if (msg.type === 'register-wiki') {
+  if (msg.type === 'register-wiki') {
     handleRegisterWiki(msg, ws, context).catch(() => {});
   } else if (msg.type === 'session-query') {
     handleSessionQuery(msg, ws, context).catch(() => {});
@@ -655,13 +573,7 @@ function handleMessage(msg, ws, context) {
     handleRequestSave(msg).catch((err) =>
       vscode.window.showErrorMessage(`MediaWiki: ${err.message}`)
     );
-  } else if (msg.type === 'save-result') {
-    const waiter = saveWaiters.get(msg.sessionId);
-    if (waiter) {
-      clearTimeout(waiter.timer);
-      saveWaiters.delete(msg.sessionId);
-      waiter.resolve({ ok: !!msg.ok, error: msg.error });
-    }
+
   }
 }
 
@@ -676,27 +588,19 @@ function activate(context) {
   sessionStore = new SessionStore(
     context.globalStorageUri ? path.join(context.globalStorageUri.fsPath, 'sessions.json') : undefined
   );
-  loadSessions();
+  sessionManager = new SessionManager(sessionStore, () => updateStatus());
+  sessionManager.load();
   languageFeatures = language.registerLanguageFeatures(context, {navigateEdit: requestBrowserNavigate});
 
-  wss = startWsServer({
+  bridge = new BrowserBridge();
+  bridge.start({
     port,
     allowedOrigin,
     onMessage: (msg, ws) => handleMessage(msg, ws, context),
-    onConnection: (ws, req) => {
-      ws.origin = req?.headers?.origin;
-      wsSessions.set(ws, new Set());
+    onConnection: (ws) => {
+      sessionManager?.registerSocket(ws);
       ws.on('close', () => {
-        const ids = wsSessions.get(ws) || new Set();
-        wsSessions.delete(ws);
-        for (const sessionId of ids) {
-          const meta = sessions.get(sessionId);
-          if (meta) {
-            meta.ws = null;
-            if (meta.state !== 'draft') meta.state = 'detached';
-          }
-        }
-        persistSessions();
+        sessionManager?.detachWs(ws);
         updateStatus();
       });
       updateStatus();
@@ -729,7 +633,7 @@ function activate(context) {
         vscode.window.showInformationMessage('MediaWiki: 当前没有打开的文件。');
         return;
       }
-      const sessionId = byPath.get(editor.document.uri.fsPath);
+      const sessionId = sessionManager?.idForPath(editor.document.uri.fsPath);
       if (!sessionId) {
         vscode.window.showInformationMessage('MediaWiki: 当前文件不是编辑会话。');
         return;
@@ -754,8 +658,8 @@ function activate(context) {
         vscode.window.showInformationMessage('MediaWiki: 当前没有打开的文件。');
         return;
       }
-      const sessionId = byPath.get(editor.document.uri.fsPath);
-      const meta = sessionId ? sessions.get(sessionId) : undefined;
+      const sessionId = sessionManager?.idForPath(editor.document.uri.fsPath);
+      const meta = sessionId ? sessionManager?.get(sessionId) : undefined;
       if (!meta) {
         vscode.window.showInformationMessage('MediaWiki: 当前文件不是编辑会话。');
         return;
@@ -783,22 +687,20 @@ function activate(context) {
       }
     }),
     vscode.commands.registerCommand('mediawikiEditor.status', () => {
-      const connected = wss
-        ? [...wss.clients].filter((c) => c.readyState === 1).length
-        : 0;
+      const connected = bridge?.connectionCount || 0;
       vscode.window.showInformationMessage(
         `MediaWiki: 端口 ${config().get('port')}，${connected} 个浏览器连接，` +
-          `${sessions.size} 个活动编辑会话。`
+          `${sessionManager?.values().length || 0} 个活动编辑会话。`
       );
     }),
     vscode.workspace.onDidSaveTextDocument((doc) => {
-      if (!byPath.has(doc.uri.fsPath)) return;
+      if (!sessionManager?.idForPath(doc.uri.fsPath)) return;
       push(doc);
       notifyDirty(doc);
     }),
     vscode.workspace.onDidCloseTextDocument((doc) => {
-      const sessionId = byPath.get(doc.uri.fsPath);
-      const meta = sessionId ? sessions.get(sessionId) : undefined;
+      const sessionId = sessionManager?.idForPath(doc.uri.fsPath);
+      const meta = sessionId ? sessionManager?.get(sessionId) : undefined;
       if (!meta || meta.state === 'draft') return;
       clearTimeout(dirtyTimers.get(meta.fsPath));
       dirtyTimers.delete(meta.fsPath);
@@ -806,19 +708,15 @@ function activate(context) {
         try {
           meta.ws.send(JSON.stringify({type: 'editor-closed', sessionId}));
         } catch {}
-        wsSessions.get(meta.ws)?.delete(sessionId);
       }
-      meta.ws = null;
-      meta.state = 'draft';
-      meta.autoRestore = false;
-      persistSessions();
+      sessionManager?.markDraft(sessionId);
       vscode.window.showInformationMessage(
         `MediaWiki: 编辑器已关闭，草稿已保留。可运行「MediaWiki: 恢复编辑草稿」。`
       );
     }),
     vscode.window.onDidChangeTextEditorSelection((event) => {
-      const sessionId = byPath.get(event.textEditor.document.uri.fsPath);
-      if (!sessionId || !wss) return;
+      const sessionId = sessionManager?.idForPath(event.textEditor.document.uri.fsPath);
+      if (!sessionId || !bridge) return;
       if (Date.now() < suppressScrollUntil) return;
       const line = event.selections[0]?.active.line ?? 0;
       clearTimeout(syncTimers.get(sessionId));
@@ -834,7 +732,7 @@ function activate(context) {
           const itemIndex = itemAt(items, offset);
           if (itemIndex < 0) return; // no candidate: keep the last preview position
           const item = items[itemIndex];
-          broadcast(wss, {
+          bridge?.broadcast({
             type: 'scroll',
             sessionId,
             text: item.text,
@@ -850,7 +748,7 @@ function activate(context) {
     }),
     vscode.workspace.onDidChangeTextDocument((event) => {
       const fsPath = event.document.uri.fsPath;
-      if (!byPath.has(fsPath)) return;
+      if (!sessionManager?.idForPath(fsPath)) return;
       clearTimeout(dirtyTimers.get(fsPath));
       dirtyTimers.set(
         fsPath,
@@ -864,14 +762,11 @@ function activate(context) {
 }
 
 function deactivate() {
-  persistSessions();
+  sessionManager?.persist();
   languageFeatures?.dispose();
   languageFeatures = null;
-  if (wss) {
-    for (const client of wss.clients) client.terminate();
-    wss.close();
-    wss = null;
-  }
+  bridge?.stop();
+  bridge = null;
 }
 
 module.exports = { activate, deactivate };

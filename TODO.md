@@ -13,17 +13,18 @@
 
 - [x] 抽出 `protocol`：WebSocket 消息、状态枚举、请求/响应类型（`src/protocol.ts`）。
 - [x] 抽出 `session-store`：`sessions.json` 的读取、原子写入（`src/session-store.ts`）。
-- [ ] 抽出 `session-manager`：`attached` / `detached` / `draft` / `closed` 状态机。
-- [ ] 抽出 `browser-bridge`：注册、attach/detach、navigate、心跳和请求等待。
-- [ ] `extension.js` 只保留激活、命令和事件绑定。
+- [x] 抽出 `session-manager`：`attached` / `detached` / `draft` 状态与持久化（`src/session-manager.ts`）。
+- [x] 抽出 `browser-bridge`：连接、广播、请求/响应等待（`src/browser-bridge.ts`）。
+- [ ] `extension.js` 只保留激活、命令和事件绑定（部分完成：session/桥接已抽出，定位与保存流程仍在）。
 - [ ] `lib/language.js` 拆成配置加载、Provider 注册、语义高亮、定义跳转。
-- [ ] 为协议和状态机补单元测试。
+- [x] 为 session 状态与持久化补单元测试（`test/session-manager.test.mjs`）。
 
 ## P2 迁移 TypeScript
 
 - [x] 添加 TypeScript 工具链（`tsconfig.json`，Node16/CJS 输出到 `out/`）。
 - [x] 先迁 `protocol`、`session-store`。
-- [ ] 迁 `session-manager`、`wiki`。
+- [x] 迁 `session-manager`。
+- [ ] 迁 `wiki`。
 - [ ] 再迁 `extension`、`lib/language`。
 - [ ] 保持 `node_modules` 外部依赖，不对 `wikiparser-node` 做单文件打包。
 - [ ] 浏览器端 IPE 插件继续使用 JavaScript。

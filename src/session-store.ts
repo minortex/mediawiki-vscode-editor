@@ -49,6 +49,10 @@ export class SessionStore {
     });
   }
 
+  flush(): Promise<void> {
+    return this.queue;
+  }
+
   save(records: StoredSession[]): void {
     if (!this.filePath) return;
     const file = this.filePath;
