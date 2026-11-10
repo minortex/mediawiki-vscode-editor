@@ -25,10 +25,14 @@ interface MwHook {
   fire(...args: unknown[]): void
 }
 
+interface MwHookFactory {
+  (name: string): MwHook
+}
+
 interface MediaWiki {
   config?: MwConfig
   util?: MwUtil
-  hook?: MwHook
+  hook?: MwHookFactory
 }
 
 interface BrowserWindow extends Window {
@@ -974,9 +978,9 @@ export default {
       temp.innerHTML = html
       root.replaceChildren(...Array.from(temp.childNodes))
       executeScripts(root)
-      if (getMw()?.hook && typeof getJQuery() === 'function') {
-        getMw()!.hook!.fire(getJQuery()!(root))
-      }
+      const mw = getMw()
+      const jQuery = getJQuery()
+      if (mw?.hook && jQuery) mw.hook('wikipage.content').fire(jQuery(root))
     }
 
     function schedulePreview(): void {

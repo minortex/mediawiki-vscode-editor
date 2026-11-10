@@ -4,16 +4,17 @@ import {fileURLToPath} from 'node:url'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const pluginDir = path.join(root, 'ipe-plugin')
-const entry = 'dist/index.mjs'
+const modulePath = 'dist/index.mjs'
 const packagePath = path.join(pluginDir, 'package.json')
 const registryPath = path.join(pluginDir, 'registry.json')
 
-if (!fs.existsSync(path.join(pluginDir, entry))) {
-  throw new Error(`missing build output: ${path.join(pluginDir, entry)}`)
+if (!fs.existsSync(path.join(pluginDir, modulePath))) {
+  throw new Error(`missing build output: ${path.join(pluginDir, modulePath)}`)
 }
 
 const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'))
-pkg.module = `./${entry}`
+const entry = `${modulePath}?v=${encodeURIComponent(pkg.version)}`
+pkg.module = `./${modulePath}`
 pkg.$ipe.loader.entry = entry
 fs.writeFileSync(packagePath, `${JSON.stringify(pkg, null, 2)}\n`)
 
