@@ -5,6 +5,7 @@ const path = require('path');
 const os = require('os');
 const fs = require('fs');
 const { BrowserBridge } = require('./out/browser-bridge');
+const itemsUtil = require('./lib/items');
 const language = require('./lib/language');
 const wikis = require('./lib/wikis');
 const { normalizeOrigin } = require('./lib/wiki-config');
@@ -123,146 +124,6 @@ async function closeAndDelete(fsPath) {
   } catch {}
 }
 
-let wikiParser = null;
-let toSimplified = null;
-
-function simplify(text) {
-  if (!toSimplified) {
-    try {
-      const OpenCC = require('opencc-js');
-      toSimplified = OpenCC.Converter({ from: 'tw', to: 'cn' });
-    } catch {
-      toSimplified = (s) => s;
-    }
-  }
-  return toSimplified(text);
-}
-const itemCache = new Map(); // fsPath -> { version, items }
-
-function extractItems(text) {
-  if (text.length > 300000) return [];
-  wikiParser ||= require('wikiparser-node');
-  const root = wikiParser.parse(text);
-  const items = [];
-  let poemCount = 0;
-  const add = (value, start, scope, label) => {
-    const s = simplify(
-      String(value || '')
-        .replace(/<!--|-->/g, '')
-        .replace(/\s+/g, ' ')
-        .trim()
-    );
-    if (/\.(jpe?g|png|gif|svg|webp|ogg|mp3|webm|pdf)$/i.test(s)) return;
-    if (!/[\p{L}\p{N}]/u.test(s)) return;
-    if (s.length >= 2 && s.length <= 60) {
-      items.push({ start, text: s, scope, label: label || null });
-    }
-  };
-  const walk = (node, scope, label) => {
-    const name = node.constructor.name;
-    // <poem> renders inside .poem; restrict matching to that container so
-    // repeated lyrics are not matched against the same words in infoboxes.
-    if (name === 'ExtToken' && String(node.name).toLowerCase() === 'poem') {
-      scope = { type: 'poem', index: poemCount++ };
-      label = null;
-    }
-    // Only the value part of a parameter is rendered; skip the parameter name
-    // but keep it as a label for context matching.
-    if (name === 'ParameterToken') {
-      const paramName = simplify(String(node.childNodes?.[0] || '').replace(/\s+/g, ' ').trim());
-      for (const child of (node.childNodes || []).slice(1)) walk(child, scope, paramName);
-      return;
-    }
-    // The template name is not rendered text either; skip it and visit parameters.
-    if (name === 'TranscludeToken') {
-      for (const child of (node.childNodes || []).slice(1)) walk(child, scope, label);
-      return;
-    }
-    if (name === 'LinkToken') {
-      const raw = node.toString();
-      const m = /^\[\[([^\]|]+)(?:\|([^\]]+))?\]\]$/.exec(raw);
-      add(m ? (m[2] || m[1]) : raw, node.getAbsoluteIndex(), scope, label);
-      return;
-    }
-    if (name === 'AstText') {
-      const raw = node.toString();
-      const base = node.getAbsoluteIndex();
-      let cursor = 0;
-      for (const part of raw.split(/[•·、,，;；\n]+/)) {
-        const idx = raw.indexOf(part, cursor);
-        add(part, base + Math.max(0, idx), scope, label);
-        cursor = Math.max(cursor, idx + part.length);
-      }
-      return;
-    }
-    for (const child of node.childNodes || []) walk(child, scope, label);
-  };
-  for (const child of root.childNodes || []) walk(child);
-  items.sort((a, b) => a.start - b.start);
-  for (let i = 0; i < items.length; i++) {
-    items[i].prev = i > 0 ? items[i - 1].text.slice(-24) : null;
-    items[i].next = i < items.length - 1 ? items[i + 1].text.slice(0, 24) : null;
-  }
-  const labelCounts = new Map();
-  for (const item of items) {
-    if (!item.label) {
-      item.labelOccurrence = 0;
-      continue;
-    }
-    const key = [item.scope?.type || '', item.scope?.index ?? '', item.label, item.text].join('\u0001');
-    const n = (labelCounts.get(key) || 0) + 1;
-    labelCounts.set(key, n);
-    item.labelOccurrence = n;
-  }
-  return items;
-}
-
-function itemsFor(doc) {
-  const cached = itemCache.get(doc.uri.fsPath);
-  if (cached && cached.version === doc.version) return cached.items;
-  let items = [];
-  try {
-    items = extractItems(doc.getText());
-  } catch {
-    items = [];
-  }
-  itemCache.set(doc.uri.fsPath, { version: doc.version, items });
-  return items;
-}
-
-function itemAt(items, offset) {
-  let best = -1;
-  for (let i = 0; i < items.length; i++) {
-    if (items[i].start <= offset) best = i;
-    else break;
-  }
-  return best;
-}
-
-function occurrenceOf(items, index) {
-  const target = items[index];
-  const keyOf = (item) =>
-    item.scope ? `${item.scope.type}:${item.scope.index}` : '';
-  const key = keyOf(target);
-  let count = 0;
-  for (let i = 0; i <= index; i++) {
-    if (items[i].text === target.text && keyOf(items[i]) === key) count++;
-  }
-  return count;
-}
-
-function findLineByText(doc, text) {
-  const needle = simplify(String(text || '').trim());
-  if (!needle) return -1;
-  const items = itemsFor(doc);
-  const hit = items.find((it) => it.text.includes(needle) || needle.includes(it.text));
-  if (hit) return doc.positionAt(hit.start).line;
-  for (let i = 0; i < doc.lineCount; i++) {
-    if (simplify(doc.lineAt(i).text).includes(needle)) return i;
-  }
-  return -1;
-}
-
 let suppressScrollUntil = 0;
 
 function revealLine(editor, line) {
@@ -279,7 +140,7 @@ async function locateInEditor(msg) {
   if (!meta) return;
   const doc = vscode.workspace.textDocuments.find((d) => d.uri.fsPath === meta.fsPath);
   if (!doc) return;
-  const line = findLineByText(doc, msg.text);
+  const line = itemsUtil.findLineByText(doc, msg.text);
   if (line < 0) return;
   const editor = await vscode.window.showTextDocument(doc, { preview: false });
   revealLine(editor, line);
@@ -725,18 +586,18 @@ function activate(context) {
         setTimeout(() => {
           syncTimers.delete(sessionId);
           const doc = event.textEditor.document;
-          const items = itemsFor(doc);
+          const items = itemsUtil.itemsFor(doc);
           const offset = doc.offsetAt(
             event.selections[0]?.active || new vscode.Position(line, 0)
           );
-          const itemIndex = itemAt(items, offset);
+          const itemIndex = itemsUtil.itemAt(items, offset);
           if (itemIndex < 0) return; // no candidate: keep the last preview position
           const item = items[itemIndex];
           bridge?.broadcast({
             type: 'scroll',
             sessionId,
             text: item.text,
-            occurrence: occurrenceOf(items, itemIndex),
+            occurrence: itemsUtil.occurrenceOf(items, itemIndex),
             scope: item.scope,
             label: item.label,
             labelOccurrence: item.labelOccurrence,

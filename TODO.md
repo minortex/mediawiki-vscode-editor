@@ -16,7 +16,7 @@
 - [x] 抽出 `session-manager`：`attached` / `detached` / `draft` 状态与持久化（`src/session-manager.ts`）。
 - [x] 抽出 `browser-bridge`：连接、广播、请求/响应等待（`src/browser-bridge.ts`）。
 - [ ] `extension.js` 只保留激活、命令和事件绑定（部分完成：session/桥接已抽出，定位与保存流程仍在）。
-- [ ] `lib/language.js` 拆成配置加载、Provider 注册、语义高亮、定义跳转。
+- [x] `lib/language.js` 拆成配置加载、转换、语义高亮、定义跳转（`lib/language/*`）。
 - [x] 为 session 状态与持久化补单元测试（`test/session-manager.test.mjs`）。
 
 ## P2 迁移 TypeScript
