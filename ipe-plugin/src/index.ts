@@ -1,39 +1,270 @@
-import type {InPageEdit, IWikiPage, QuickEditEventPayload} from '@inpageedit/core'
+import type {
+  IPEModal,
+  InPageEdit,
+  IWikiPage,
+  QuickEditEventPayload,
+  WatchlistAction,
+} from '@inpageedit/core'
 
 const WS_URL = 'ws://127.0.0.1:8927'
 const RECONNECT_MS = 5000
+const PENDING_CONFIRM_KEY = 'mwe-ipe-pending-save-confirmation'
+
+type Section = number | 'new' | undefined
+
+interface MwConfig {
+  get<T = unknown>(key: string): T | undefined
+}
+
+interface MwUtil {
+  wikiScript(script: string): string
+  getUrl(title: string): string
+}
+
+interface MwHook {
+  fire(...args: unknown[]): void
+}
+
+interface MediaWiki {
+  config?: MwConfig
+  util?: MwUtil
+  hook?: MwHook
+}
+
+interface BrowserWindow extends Window {
+  mw?: MediaWiki
+  jQuery?: (root: Element) => unknown
+}
+
+interface SiteError {
+  code?: string
+  info?: string
+}
+
+interface SiteInfoResponse {
+  error?: SiteError
+  query?: unknown
+}
+
+interface ParseResponse {
+  parse?: {
+    text?: string
+    images?: string[]
+  }
+}
+
+interface SessionInfo {
+  sessionId: string
+  title: string
+  section?: Section | null
+  text: string
+  dirty?: boolean
+  revid?: number
+  basetimestamp?: string
+  starttimestamp?: string
+}
 
 interface Session {
   id: string
   title: string
-  section: number | 'new' | undefined
+  section: Section
   text: string
   wikiPage: IWikiPage
   remoteDirty: boolean
   changed: boolean
   busy: boolean
-  watchlist?: any
+  watchlist?: WatchlistAction
   reload?: boolean
   fullOriginal?: Node[]
 }
 
-interface Waiter {
-  resolve: (value: any) => void
-  reject: (error: any) => void
-  timer: number
-  query?: any
+interface PendingConfirm {
+  sessionId: string
+  origin: string
 }
 
-const getMw = (): any => (window as any).mw
-const getMwConfig = (key: string): any => getMw()?.config?.get?.(key)
-const getMwUtil = (): any => getMw()?.util
-const getJQuery = (): any => (window as any).jQuery
+interface TextContext {
+  nodes: Array<{node: Text; start: number; end: number}>
+  norm: string
+  map: number[]
+}
+
+interface ScrollScope {
+  type: 'poem'
+  index: number
+}
+
+interface TemplatesUsedService {
+  showModal(options?: {title?: string; wikiPage?: IWikiPage}): unknown
+}
+
+interface WikiRegisteredMessage {
+  type: 'wiki-registered'
+  requestId: string
+  ok: boolean
+  error?: string
+}
+
+interface SessionResultMessage {
+  type: 'session-result'
+  requestId: string
+  ok: boolean
+  session?: SessionInfo | null
+  error?: string
+}
+
+interface NavigateEditMessage {
+  type: 'navigate-edit'
+  requestId: string
+  title: string
+  fragment?: string
+}
+
+interface UpdateMessage {
+  type: 'update'
+  sessionId: string
+  text: string
+}
+
+interface DirtyStateMessage {
+  type: 'state'
+  sessionId: string
+  dirty: boolean
+}
+
+interface ScrollMessage {
+  type: 'scroll'
+  sessionId: string
+  text: string
+  occurrence: number
+  scope?: ScrollScope
+  label?: string
+  labelOccurrence?: number
+  prev?: string
+  next?: string
+}
+
+interface SaveMessage {
+  type: 'save'
+  sessionId: string
+  requestId?: string
+  text: string
+  summary?: string
+  minor?: boolean
+}
+
+interface FinishMessage {
+  type: 'finish'
+  sessionId: string
+  result: 'saved' | 'discarded' | 'unchanged' | 'closed'
+}
+
+interface EditorClosedMessage {
+  type: 'editor-closed'
+  sessionId: string
+}
+
+interface PreemptedMessage {
+  type: 'preempted'
+  sessionId: string
+}
+
+interface SaveConfirmedResultMessage {
+  type: 'save-confirmed-result'
+  sessionId: string
+  ok: boolean
+}
+
+type IncomingMessage =
+  | WikiRegisteredMessage
+  | SessionResultMessage
+  | NavigateEditMessage
+  | UpdateMessage
+  | DirtyStateMessage
+  | ScrollMessage
+  | SaveMessage
+  | FinishMessage
+  | EditorClosedMessage
+  | PreemptedMessage
+  | SaveConfirmedResultMessage
+
+type OutgoingMessage =
+  | {
+      type: 'register-wiki'
+      requestId: string
+      origin: string
+      api: string
+      name: string
+      siteinfo: unknown
+    }
+  | {
+      type: 'session-query'
+      requestId: string
+      origin: string
+      title: string | undefined
+    }
+  | {
+      type: 'open'
+      sessionId: string
+      title: string
+      section: Section
+      text: string
+      revid?: number
+      basetimestamp?: string
+      starttimestamp: string
+      wiki: string
+    }
+  | {
+      type: 'save-result'
+      sessionId: string
+      requestId?: string
+      ok: boolean
+      error?: string
+    }
+  | {
+      type: 'finish'
+      sessionId: string
+      result: 'saved' | 'discarded' | 'unchanged'
+      summary?: string
+      minor?: boolean
+    }
+  | {type: 'save'; sessionId: string; summary?: string; minor?: boolean}
+  | {type: 'locate'; sessionId: string; text: string}
+  | {type: 'save-confirmed'; sessionId: string; origin: string}
+  | {type: 'open-result'; requestId: string; opened: boolean}
+
+interface Waiter<T> {
+  resolve(value: T): void
+  reject(error: Error): void
+  timer: number
+  query?: T
+}
+
+type CaretDocument = Document & {
+  caretRangeFromPoint?: (x: number, y: number) => Range | null
+}
+
+const browserWindow = window as unknown as BrowserWindow
+
+const getMw = (): MediaWiki | undefined => browserWindow.mw
+const getMwConfig = <T = unknown>(key: string): T | undefined => getMw()?.config?.get<T>(key)
+const getMwUtil = (): MwUtil | undefined => getMw()?.util
+const getJQuery = (): ((root: Element) => unknown) | undefined => browserWindow.jQuery
 
 function apiUrl(): string {
   const util = getMwUtil()
-  return util && typeof util.wikiScript === 'function'
-    ? util.wikiScript('api')
-    : new URL('/api.php', location.origin).href
+  return util?.wikiScript ? util.wikiScript('api') : new URL('/api.php', location.origin).href
+}
+
+function parseWatchlist(value: string): WatchlistAction {
+  switch (value) {
+    case 'preferences':
+    case 'watch':
+    case 'unwatch':
+      return value as WatchlistAction
+    default:
+      return 'nochange' as WatchlistAction
+  }
 }
 
 export default {
@@ -41,6 +272,7 @@ export default {
   inject: ['quickEdit', 'quickUpload', 'templatesUsed', 'quickDiff'],
   apply(ctx: InPageEdit) {
     const API = apiUrl()
+    const templatesUsed = (ctx as InPageEdit & {templatesUsed?: TemplatesUsedService}).templatesUsed
 
     let socket: WebSocket | null = null
     let connected = false
@@ -50,16 +282,65 @@ export default {
     let reconnectTimer: number | undefined
     let disposed = false
 
-    let registeredWiki: any = null
-    let registeringWiki: Promise<any> | null = null
+    let registeredWiki: unknown = null
+    let registeringWiki: Promise<unknown> | null = null
     let registerSeq = 0
-    const registerWaiters: Record<string, Waiter> = {}
+    const registerWaiters: Record<string, Waiter<unknown>> = {}
     let pendingStart: QuickEditEventPayload | null = null
-    let sessionQueryPromise: Promise<any> | null = null
+    let sessionQueryPromise: Promise<SessionInfo | null> | null = null
     let sessionQuerySeq = 0
-    const sessionWaiters: Record<string, Waiter> = {}
+    const sessionWaiters: Record<string, Waiter<SessionInfo | null>> = {}
+    let pendingConfirm: PendingConfirm | null = null
+    let pendingConfirmSent = false
 
-    // ---------- hide the native quick-edit modal before it paints ----------
+    function readPendingConfirm(): PendingConfirm | null {
+      try {
+        const raw = sessionStorage.getItem(PENDING_CONFIRM_KEY)
+        if (!raw) return null
+        const value: unknown = JSON.parse(raw)
+        if (!value || typeof value !== 'object' || !('sessionId' in value)) return null
+        const sessionId = value.sessionId
+        if (typeof sessionId !== 'string') return null
+        const origin = 'origin' in value && typeof value.origin === 'string'
+          ? value.origin
+          : location.origin
+        return {sessionId, origin}
+      } catch {
+        return null
+      }
+    }
+
+    function storePendingConfirm(sessionId: string): void {
+      pendingConfirm = {sessionId, origin: location.origin}
+      pendingConfirmSent = false
+      try {
+        sessionStorage.setItem(PENDING_CONFIRM_KEY, JSON.stringify(pendingConfirm))
+      } catch {
+        // sessionStorage unavailable; the in-memory marker still works.
+      }
+    }
+
+    function clearPendingConfirm(): void {
+      pendingConfirm = null
+      pendingConfirmSent = false
+      try {
+        sessionStorage.removeItem(PENDING_CONFIRM_KEY)
+      } catch {}
+    }
+
+    function sendPendingConfirm(): void {
+      if (!pendingConfirm || pendingConfirmSent) return
+      if (pendingConfirm.origin !== location.origin) return
+      if (send({
+        type: 'save-confirmed',
+        sessionId: pendingConfirm.sessionId,
+        origin: location.origin,
+      })) {
+        pendingConfirmSent = true
+      }
+    }
+
+    // ---------- native modal guard ----------
     function ensureGuardStyle(): void {
       if (document.getElementById('mwe-ipe-guard-style')) return
       const style = document.createElement('style')
@@ -71,7 +352,6 @@ export default {
       document.head.append(style)
     }
 
-    // ---------- bottom bar ----------
     const barStyleId = 'mwe-ipe-bar-style'
 
     function ensureBarStyle(): void {
@@ -150,30 +430,26 @@ export default {
       document.body.append(bar)
       document.body.classList.add('mwe-ipe-editing')
       bar.querySelector('.mwe-ipe-submit')?.addEventListener('click', () => {
-        requestSave(bar!)
+        requestSave(bar)
       })
       bar.querySelector('.mwe-ipe-cancel')?.addEventListener('click', () => {
         cancelEdit()
       })
       bar.querySelector('.mwe-ipe-upload')?.addEventListener('click', () => {
-        const quickUpload = ctx.quickUpload
-        if (quickUpload) void quickUpload.showModal()
+        void ctx.quickUpload?.showModal()
       })
       bar.querySelector('.mwe-ipe-templates')?.addEventListener('click', () => {
         if (!session) return
-        const templatesUsed = (ctx as any).templatesUsed
-        if (templatesUsed) void templatesUsed.showModal({title: session.title})
+        void templatesUsed?.showModal({title: session.title})
       })
       bar.querySelector('.mwe-ipe-images')?.addEventListener('click', () => {
         showImagesUsed()
       })
       bar.querySelector('.mwe-ipe-diff')?.addEventListener('click', () => {
         if (!session) return
-        const quickDiff = ctx.quickDiff
-        if (!quickDiff) return
         const from = session.wikiPage.revisions[0]?.content || ''
         if (from === session.text) return
-        quickDiff.comparePages({
+        ctx.quickDiff?.comparePages({
           fromtitle: session.title,
           fromtext: from,
           totitle: session.title,
@@ -188,38 +464,37 @@ export default {
       setStatus(text, kind)
     }
 
-    // ---------- api ----------
-    function apiPost(params: Record<string, any>): Promise<any> {
+    // ---------- API ----------
+    function apiPost(params: Record<string, string>): Promise<ParseResponse> {
       return fetch(API, {
         method: 'POST',
         credentials: 'include',
         headers: {'content-type': 'application/x-www-form-urlencoded'},
         body: new URLSearchParams(Object.assign({format: 'json', formatversion: '2'}, params)),
-      }).then(response => response.json())
+      }).then(response => response.json() as Promise<ParseResponse>)
     }
 
-    // ---------- websocket ----------
-    function fetchSiteInfo(): Promise<any> {
-      const params = {
+    function fetchSiteInfo(): Promise<unknown> {
+      const params = new URLSearchParams({
         action: 'query',
         meta: 'siteinfo',
         siprop: 'general|namespaces|namespacealiases|magicwords|functionhooks|extensiontags|variables|interwikimap',
         format: 'json',
         formatversion: '2',
-      }
+      })
       const controller = typeof AbortController === 'function' ? new AbortController() : null
       const timer = controller ? window.setTimeout(() => controller.abort(), 20000) : null
-      return fetch(API + '?' + new URLSearchParams(params), {
+      return fetch(`${API}?${params}`, {
         credentials: 'include',
-        signal: controller ? controller.signal : undefined,
+        signal: controller?.signal,
       })
         .then(response => {
-          if (!response.ok) throw new Error('HTTP ' + response.status)
-          return response.json()
+          if (!response.ok) throw new Error(`HTTP ${response.status}`)
+          return response.json() as Promise<SiteInfoResponse>
         })
         .then(data => {
-          if (data.error) throw new Error(data.error.code + ': ' + data.error.info)
-          if (!data.query || !data.query.general) throw new Error('站点没有返回 siteinfo')
+          if (data.error) throw new Error(`${data.error.code}: ${data.error.info}`)
+          if (!data.query) throw new Error('站点没有返回 siteinfo')
           return data.query
         })
         .finally(() => {
@@ -229,14 +504,13 @@ export default {
 
     function notifyOffline(message?: string, title?: string): void {
       const text = message || 'VSCode 扩展未连接。请手动打开 VSCode，并确认已安装并启用 MediaWiki 扩展。'
-      const modal = ctx.modal
-      if (modal && typeof modal.notify === 'function') {
-        modal.notify('warning', {
+      if (ctx.modal?.notify) {
+        ctx.modal.notify('warning', {
           title: title || 'VSCode 未连接',
           content: text,
           position: 'top right',
           closeAfter: {time: 8000, resetOnHover: true},
-        } as any)
+        } as Parameters<typeof ctx.modal.notify>[1])
         return
       }
       const old = document.getElementById('mwe-offline-notice')
@@ -257,36 +531,35 @@ export default {
       link.rel = 'noopener'
       link.textContent = '打开目标页面'
       link.style.cssText = 'color:#36c;text-decoration:underline;cursor:pointer;'
-      const modal = ctx.modal
-      if (modal && typeof modal.notify === 'function') {
-        modal.notify('warning', {
+      if (ctx.modal?.notify) {
+        ctx.modal.notify('warning', {
           title: '弹窗被拦截',
           content: link,
           position: 'top right',
           closeAfter: {time: 10000, resetOnHover: true},
-        } as any)
+        } as Parameters<typeof ctx.modal.notify>[1])
       } else {
         notifyOffline('弹窗被拦截，请手动打开目标页面。', '需要打开页面')
       }
     }
 
-    function openNavigate(msg: any): void {
+    function openNavigate(msg: NavigateEditMessage): void {
       let url: URL
       try {
-        url = new URL(getMwUtil().getUrl(msg.title), location.href)
+        const util = getMwUtil()
+        if (!util?.getUrl) throw new Error('mw.util.getUrl 不可用')
+        url = new URL(util.getUrl(msg.title), location.href)
       } catch {
         send({type: 'open-result', requestId: msg.requestId, opened: false})
         return
       }
       url.searchParams.set('external-editor', '1')
       if (msg.fragment) url.hash = msg.fragment
-      const name = 'mwe-edit:' + encodeURIComponent(msg.title)
+      const name = `mwe-edit:${encodeURIComponent(msg.title)}`
       let win: Window | null = null
       try {
         win = window.open(url.href, name)
-      } catch {
-        // popup blocked
-      }
+      } catch {}
       if (!win) {
         showOpenLink(url.href)
         send({type: 'open-result', requestId: msg.requestId, opened: false})
@@ -294,19 +567,17 @@ export default {
       }
       try {
         win.focus()
-      } catch {
-        // ignore
-      }
+      } catch {}
       send({type: 'open-result', requestId: msg.requestId, opened: true})
     }
 
-    function ensureWikiRegistered(): Promise<any> {
+    function ensureWikiRegistered(): Promise<unknown> {
       if (registeredWiki) return Promise.resolve(registeredWiki)
       if (registeringWiki) return registeringWiki
       registeringWiki = fetchSiteInfo()
         .then(query => {
-          const requestId = 'reg-' + Date.now() + '-' + ++registerSeq
-          return new Promise<any>((resolve, reject) => {
+          const requestId = `reg-${Date.now()}-${++registerSeq}`
+          return new Promise<unknown>((resolve, reject) => {
             const timer = window.setTimeout(() => {
               delete registerWaiters[requestId]
               reject(new Error('扩展未响应站点注册'))
@@ -317,7 +588,7 @@ export default {
               requestId,
               origin: location.origin,
               api: API,
-              name: getMwConfig('wgSiteName') || location.host,
+              name: getMwConfig<string>('wgSiteName') || location.host,
               siteinfo: query,
             })
           })
@@ -334,7 +605,7 @@ export default {
       return registeringWiki
     }
 
-    function onWikiRegistered(msg: any): void {
+    function onWikiRegistered(msg: WikiRegisteredMessage): void {
       const waiter = registerWaiters[msg.requestId]
       if (!waiter) return
       clearTimeout(waiter.timer)
@@ -349,8 +620,8 @@ export default {
       socket = new WebSocket(WS_URL)
       socket.addEventListener('open', () => {
         connected = true
-        const notice = document.getElementById('mwe-offline-notice')
-        if (notice) notice.remove()
+        document.getElementById('mwe-offline-notice')?.remove()
+        sendPendingConfirm()
         void (async () => {
           try {
             await ensureWikiRegistered()
@@ -360,8 +631,11 @@ export default {
               pendingStart = null
               return
             }
-          } catch (e) {
-            status('站点注册失败：' + (e instanceof Error ? e.message : String(e)), 'error')
+          } catch (error) {
+            status(
+              `站点注册失败：${error instanceof Error ? error.message : String(error)}`,
+              'error',
+            )
           }
           if (session) {
             restorePage()
@@ -372,8 +646,11 @@ export default {
           if (pendingStart) {
             const pending = pendingStart
             pendingStart = null
-            startEdit(pending).catch(e => {
-              status('启动失败：' + (e instanceof Error ? e.message : String(e)), 'error')
+            startEdit(pending).catch(error => {
+              status(
+                `启动失败：${error instanceof Error ? error.message : String(error)}`,
+                'error',
+              )
             })
           }
         })()
@@ -386,14 +663,12 @@ export default {
       socket.addEventListener('error', () => {
         try {
           socket?.close()
-        } catch {
-          // ignore
-        }
+        } catch {}
       })
       socket.addEventListener('message', event => {
-        let msg: any
+        let msg: IncomingMessage
         try {
-          msg = JSON.parse(event.data)
+          msg = JSON.parse(event.data) as IncomingMessage
         } catch {
           return
         }
@@ -407,6 +682,12 @@ export default {
         }
         if (msg.type === 'navigate-edit') {
           openNavigate(msg)
+          return
+        }
+        if (msg.type === 'save-confirmed-result') {
+          if (pendingConfirm && msg.sessionId === pendingConfirm.sessionId && msg.ok) {
+            clearPendingConfirm()
+          }
           return
         }
         if (!session || msg.sessionId !== session.id) return
@@ -425,11 +706,11 @@ export default {
             msg.label,
             msg.prev,
             msg.next,
-            msg.labelOccurrence
+            msg.labelOccurrence,
           )
         } else if (msg.type === 'save') {
           setStatus('正在提交…')
-          void saveEdit(msg.text, msg.summary, msg.minor)
+          void saveEdit(msg.text, msg.summary, msg.minor, msg.requestId)
         } else if (msg.type === 'finish') {
           if (msg.result === 'closed') restorePage()
           endSession()
@@ -448,7 +729,7 @@ export default {
       })
     }
 
-    function send(msg: Record<string, any>): boolean {
+    function send(msg: OutgoingMessage): boolean {
       if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify(msg))
         return true
@@ -467,7 +748,7 @@ export default {
       })
       const box = document.createElement('div')
       box.style.cssText =
-        'position:absolute;left:' + left + 'px;top:' + top + 'px;width:' + rect.width + 'px;height:' + rect.height + 'px;' +
+        `position:absolute;left:${left}px;top:${top}px;width:${rect.width}px;height:${rect.height}px;` +
         'pointer-events:none;z-index:2147482999;outline:2px solid #3366cc;' +
         'background:rgba(51,102,204,.15);border-radius:2px;'
       document.body.append(box)
@@ -475,8 +756,8 @@ export default {
       return true
     }
 
-    function revealHidden(el: Element): boolean {
-      let node: Element | null = el
+    function revealHidden(element: Element): boolean {
+      let node: Element | null = element
       while (node && node !== document.body) {
         const style = window.getComputedStyle(node)
         if (style.display === 'none') {
@@ -493,12 +774,6 @@ export default {
       return false
     }
 
-    interface TextContext {
-      nodes: Array<{node: Text; start: number; end: number}>
-      norm: string
-      map: number[]
-    }
-
     function buildTextContext(root: Element): TextContext {
       const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
       const nodes: Array<{node: Text; start: number; end: number}> = []
@@ -506,7 +781,7 @@ export default {
       let node: Node | null
       while ((node = walker.nextNode())) {
         const parent = (node as Text).parentElement
-        if (parent && parent.closest('script,style,.vc-preview')) continue
+        if (parent?.closest('script,style,.vc-preview')) continue
         const start = raw.length
         raw += node.nodeValue || ''
         nodes.push({node: node as Text, start, end: raw.length})
@@ -514,16 +789,16 @@ export default {
       let norm = ''
       const map: number[] = []
       let space = false
-      for (let i = 0; i < raw.length; i++) {
-        if (/\s/.test(raw[i])) {
+      for (let index = 0; index < raw.length; index++) {
+        if (/\s/.test(raw[index])) {
           if (!space) {
             norm += ' '
-            map.push(i)
+            map.push(index)
             space = true
           }
         } else {
-          norm += raw[i]
-          map.push(i)
+          norm += raw[index]
+          map.push(index)
           space = false
         }
       }
@@ -541,8 +816,8 @@ export default {
         const rawStart = context.map[index]
         const rawEnd =
           (context.map[Math.min(index + text.length - 1, context.map.length - 1)] || rawStart) + 1
-        const head = context.nodes.find(n => rawStart >= n.start && rawStart < n.end)
-        const tail = context.nodes.find(n => rawEnd <= n.end && rawEnd > n.start)
+        const head = context.nodes.find(item => rawStart >= item.start && rawStart < item.end)
+        const tail = context.nodes.find(item => rawEnd <= item.end && rawEnd > item.start)
         if (!head || !tail) continue
         const range = document.createRange()
         range.setStart(head.node, rawStart - head.start)
@@ -555,42 +830,42 @@ export default {
     function scrollToOccurrence(
       text: string,
       occurrence: number,
-      scope: any,
+      scope?: ScrollScope,
       label?: string,
       prev?: string,
       next?: string,
-      labelOccurrence?: number
+      labelOccurrence?: number,
     ): boolean {
       if (!text) return false
       const all = document.querySelector('#mw-content-text')
       if (!all) return false
       let root: Element = all
-      if (scope && scope.type === 'poem') {
+      if (scope?.type === 'poem') {
         const poem = all.querySelectorAll('.poem')[scope.index]
         if (!poem) return false
         root = poem
       }
       const wanted = Math.max(1, Number(occurrence) || 1)
       const candidates: Array<{needle: string; occurrence: number}> = []
-      function push(value: string | undefined, occ: number): void {
+      const push = (value: string | undefined, count: number): void => {
         const needle = String(value || '').replace(/\s+/g, ' ').trim()
         if (needle.length < 2) return
-        if (candidates.some(c => c.needle === needle)) return
-        candidates.push({needle, occurrence: occ})
+        if (candidates.some(candidate => candidate.needle === needle)) return
+        candidates.push({needle, occurrence: count})
       }
       if (scope) {
         push(text, wanted)
       } else {
         if (label) {
-          push(label + ' ' + text, labelOccurrence || 1)
+          push(`${label} ${text}`, labelOccurrence || 1)
           push(label + text, labelOccurrence || 1)
         }
         if (next) {
-          push(text + ' ' + next, 1)
+          push(`${text} ${next}`, 1)
           push(text + next, 1)
         }
         if (prev) {
-          push(prev + ' ' + text, 1)
+          push(`${prev} ${text}`, 1)
           push(prev + text, 1)
         }
         push(text, wanted)
@@ -604,8 +879,8 @@ export default {
           if (drawBox(rect)) return true
           continue
         }
-        const el = range.startContainer.parentElement
-        if (el && revealHidden(el)) {
+        const element = range.startContainer.parentElement
+        if (element && revealHidden(element)) {
           window.setTimeout(() => {
             const again = findRangeIn(context, candidate.needle, candidate.occurrence)
             if (again) drawBox(again.getBoundingClientRect())
@@ -634,55 +909,49 @@ export default {
       url.searchParams.delete('external-editor-section')
       try {
         history.replaceState(null, '', url.pathname + url.search + url.hash)
-      } catch {
-        // ignore
-      }
-      return {section: section == null || section === '' ? undefined : (Number(section) as number)}
+      } catch {}
+      return {section: section == null || section === '' ? undefined : Number(section)}
     }
 
-    function isArticleLink(a: HTMLAnchorElement): boolean {
-      if (a.closest('.mw-editsection')) return false
-      if (a.classList.contains('new') || a.classList.contains('external')) return false
-      const url = new URL(a.href, location.href)
+    function isArticleLink(anchor: HTMLAnchorElement): boolean {
+      if (anchor.closest('.mw-editsection')) return false
+      if (anchor.classList.contains('new') || anchor.classList.contains('external')) return false
+      const url = new URL(anchor.href, location.href)
       if (url.origin !== location.origin) return false
-      const q = url.searchParams
-      if (q.get('action') || q.get('oldid') || q.get('diff') || q.get('redlink')) return false
-      if (url.pathname.indexOf('/Special:') >= 0 || url.pathname.indexOf('特殊:') >= 0) return false
+      const query = url.searchParams
+      if (query.get('action') || query.get('oldid') || query.get('diff') || query.get('redlink')) {
+        return false
+      }
+      if (url.pathname.includes('/Special:') || url.pathname.includes('特殊:')) return false
       if (url.pathname === location.pathname && url.hash) return false
       return true
     }
 
     function textAtPoint(x: number, y: number): string | null {
+      const caretDocument = document as CaretDocument
       let range: Range | null = null
-      const documentWithCaret = document as Document & {
-        caretRangeFromPoint?: (x: number, y: number) => Range | null
-        caretPositionFromPoint?: (x: number, y: number) => {offsetNode: Node; offset: number} | null
-      }
-      if (documentWithCaret.caretRangeFromPoint) {
-        range = documentWithCaret.caretRangeFromPoint(x, y)
-      } else if (documentWithCaret.caretPositionFromPoint) {
-        const pos = documentWithCaret.caretPositionFromPoint(x, y)
-        if (pos) {
+      if (caretDocument.caretRangeFromPoint) {
+        range = caretDocument.caretRangeFromPoint(x, y)
+      } else if (document.caretPositionFromPoint) {
+        const position = document.caretPositionFromPoint(x, y)
+        if (position) {
           range = document.createRange()
-          range.setStart(pos.offsetNode, pos.offset)
+          range.setStart(position.offsetNode, position.offset)
           range.collapse(true)
         }
       }
-      if (!range || !range.startContainer || range.startContainer.nodeType !== Node.TEXT_NODE) {
-        return null
-      }
+      if (!range || range.startContainer.nodeType !== Node.TEXT_NODE) return null
       const value = range.startContainer.nodeValue || ''
       const index = range.startOffset || 0
-      const s = value
+      const text = value
         .slice(Math.max(0, index - 40), Math.min(value.length, index + 40))
         .replace(/\s+/g, ' ')
         .trim()
-      return s.length >= 2 ? s : null
+      return text.length >= 2 ? text : null
     }
 
     // ---------- preview ----------
     function executeScripts(root: Element): void {
-      if (!root) return
       root.querySelectorAll<HTMLScriptElement>('script').forEach(old => {
         if (old.dataset.mweExecuted) return
         const script = document.createElement('script')
@@ -705,9 +974,8 @@ export default {
       temp.innerHTML = html
       root.replaceChildren(...Array.from(temp.childNodes))
       executeScripts(root)
-      const mw = getMw()
-      if (mw?.hook && typeof getJQuery() === 'function') {
-        mw.hook('wikipage.content').fire(getJQuery()(root))
+      if (getMw()?.hook && typeof getJQuery() === 'function') {
+        getMw()!.hook!.fire(getJQuery()!(root))
       }
     }
 
@@ -716,34 +984,36 @@ export default {
       previewTimer = window.setTimeout(renderPreview, 250)
     }
 
-    async function renderPreview(): Promise<void> {
-      if (!session) return
+    async function renderPreview(): Promise<boolean> {
+      if (!session) return false
       if (session.section != null) {
         setStatus('VSCode 编辑中（章节预览暂不支持）')
-        return
+        return false
       }
       const seq = ++previewSeq
-      const params = {
-        action: 'parse',
-        contentmodel: 'wikitext',
-        title: session.title,
-        text: session.text,
-        pst: '1',
-        preview: '1',
-        disableeditsection: '1',
-        disablelimitreport: '1',
-        prop: 'text',
-      }
-      let data: any
+      let data: ParseResponse
       try {
-        data = await apiPost(params)
-      } catch (e) {
-        if (seq === previewSeq) status('预览失败：' + (e instanceof Error ? e.message : String(e)))
-        return
+        data = await apiPost({
+          action: 'parse',
+          contentmodel: 'wikitext',
+          title: session.title,
+          text: session.text,
+          pst: '1',
+          preview: '1',
+          disableeditsection: '1',
+          disablelimitreport: '1',
+          prop: 'text',
+        })
+      } catch (error) {
+        if (seq === previewSeq) {
+          status(`预览失败：${error instanceof Error ? error.message : String(error)}`)
+        }
+        return false
       }
-      if (seq !== previewSeq || !data.parse) return
+      if (seq !== previewSeq || !data.parse?.text) return false
       applyFull(data.parse.text)
-      setStatus('预览已更新 ' + new Date().toLocaleTimeString())
+      setStatus(`预览已更新 ${new Date().toLocaleTimeString()}`)
+      return true
     }
 
     // ---------- edit session ----------
@@ -757,7 +1027,7 @@ export default {
 
     function restorePage(): void {
       const root = document.querySelector('#mw-content-text')
-      if (root && session && session.fullOriginal) {
+      if (root && session?.fullOriginal) {
         root.replaceChildren(...session.fullOriginal)
         session.fullOriginal = undefined
       }
@@ -767,29 +1037,26 @@ export default {
       session = null
       clearTimeout(previewTimer)
       window.removeEventListener('beforeunload', onBeforeUnload)
-      const bar = document.querySelector('.mwe-ipe-bar')
-      if (bar) bar.remove()
+      document.querySelector('.mwe-ipe-bar')?.remove()
       document.body.classList.remove('mwe-ipe-editing')
     }
 
-    function queryExistingSession(): Promise<any> {
+    function queryExistingSession(): Promise<SessionInfo | null> {
       if (sessionQueryPromise) return sessionQueryPromise
       if (!connected) return Promise.resolve(null)
-      const requestId = 'session-' + Date.now() + '-' + ++sessionQuerySeq
-      sessionQueryPromise = new Promise<any>((resolve, reject) => {
+      const requestId = `session-${Date.now()}-${++sessionQuerySeq}`
+      sessionQueryPromise = new Promise<SessionInfo | null>((resolve, reject) => {
         const timer = window.setTimeout(() => {
           delete sessionWaiters[requestId]
           reject(new Error('扩展未响应会话查询'))
         }, 8000)
         sessionWaiters[requestId] = {resolve, reject, timer}
-        if (
-          !send({
-            type: 'session-query',
-            requestId,
-            origin: location.origin,
-            title: getMwConfig('wgPageName'),
-          })
-        ) {
+        if (!send({
+          type: 'session-query',
+          requestId,
+          origin: location.origin,
+          title: getMwConfig<string>('wgPageName'),
+        })) {
           clearTimeout(timer)
           delete sessionWaiters[requestId]
           reject(new Error('扩展未连接'))
@@ -801,7 +1068,7 @@ export default {
       return sessionQueryPromise
     }
 
-    function onSessionResult(msg: any): void {
+    function onSessionResult(msg: SessionResultMessage): void {
       const waiter = sessionWaiters[msg.requestId]
       if (!waiter) return
       clearTimeout(waiter.timer)
@@ -810,25 +1077,21 @@ export default {
       else waiter.resolve(msg.session || null)
     }
 
-    async function adoptSession(info: any): Promise<void> {
-      if (!info || session) return
-      let wikiPage: IWikiPage | undefined
+    async function adoptSession(info: SessionInfo): Promise<void> {
+      if (session) return
+      let wikiPage: IWikiPage
       try {
         wikiPage = info.revid
-          ? await ctx.wikiPage.newFromRevision(info.revid, info.section)
-          : await ctx.wikiPage.newFromTitle(info.title, false, info.section)
-      } catch (e) {
-        status('恢复会话失败：' + (e instanceof Error ? e.message : String(e)), 'error')
-        return
-      }
-      if (!wikiPage) {
-        status('无法恢复编辑会话：InPageEdit wikiPage 不可用', 'error')
+          ? await ctx.wikiPage.newFromRevision(info.revid, info.section ?? undefined)
+          : await ctx.wikiPage.newFromTitle(info.title, false, info.section ?? undefined)
+      } catch (error) {
+        status(`恢复会话失败：${error instanceof Error ? error.message : String(error)}`, 'error')
         return
       }
       session = {
         id: info.sessionId,
         title: info.title,
-        section: info.section,
+        section: info.section ?? undefined,
         text: info.text,
         wikiPage,
         remoteDirty: !!info.dirty,
@@ -843,9 +1106,6 @@ export default {
     }
 
     async function startEdit(payload: QuickEditEventPayload): Promise<void> {
-      const options = payload.options
-      const modal = payload.modal
-      const wikiPage = payload.wikiPage
       if (session) return
       if (!connected) {
         pendingStart = payload
@@ -859,28 +1119,27 @@ export default {
           await adoptSession(existing)
           return
         }
-      } catch (e) {
-        const message =
-          '站点注册失败：' +
-          (e instanceof Error ? e.message : String(e)) +
-          '。请更新网页端脚本并刷新页面。'
-        status(message)
+      } catch (error) {
+        const message = `站点注册失败：${
+          error instanceof Error ? error.message : String(error)
+        }。请更新网页端脚本并刷新页面。`
+        status(message, 'error')
         notifyOffline(message, '站点注册失败')
         return
       }
-      const rev = wikiPage.revisions?.[0]
+      const revision = payload.wikiPage.revisions[0]
       session = {
-        id: 's' + Date.now(),
-        title: wikiPage.pageInfo?.title || options.title,
-        section: options.section,
-        text: (rev && rev.content) || '',
-        wikiPage,
+        id: `s${Date.now()}`,
+        title: payload.wikiPage.pageInfo?.title || payload.options.title,
+        section: payload.options.section,
+        text: revision?.content || '',
+        wikiPage: payload.wikiPage,
         remoteDirty: false,
         changed: false,
         busy: false,
       }
       window.addEventListener('beforeunload', onBeforeUnload)
-      showBar(modal)
+      showBar(payload.modal)
       document.body.classList.remove('ipe-modal-no-scroll')
       setStatus('VSCode 编辑中，保存文件即刷新预览')
       send({
@@ -889,44 +1148,40 @@ export default {
         title: session.title,
         section: session.section,
         text: session.text,
-        revid: rev && rev.revid,
-        basetimestamp: rev && rev.timestamp,
+        revid: revision?.revid,
+        basetimestamp: revision?.timestamp,
         starttimestamp: new Date().toISOString(),
         wiki: location.origin,
       })
     }
 
     function showImagesUsed(): void {
-      if (!session) return
-      const modal = ctx.modal
-      if (!modal) return
+      if (!session || !ctx.modal) return
       fetch(
-        API +
-          '?action=parse&format=json&formatversion=2&prop=images&page=' +
-          encodeURIComponent(session.title)
+        `${API}?action=parse&format=json&formatversion=2&prop=images&page=${encodeURIComponent(session.title)}`,
       )
-        .then(response => response.json())
+        .then(response => response.json() as Promise<ParseResponse>)
         .then(data => {
-          const images: string[] = (data.parse && data.parse.images) || []
+          const images = data.parse?.images || []
           const box = document.createElement('div')
           if (!images.length) {
             box.textContent = '没有使用的图片。'
           } else {
             const list = document.createElement('ol')
-            images.forEach(title => {
-              const name = /^File:/i.test(title) ? title : 'File:' + title
+            for (const title of images) {
+              const name = /^File:/i.test(title) ? title : `File:${title}`
               const item = document.createElement('li')
               const link = document.createElement('a')
-              link.href = '/wiki/' + encodeURIComponent(name)
+              link.href = `/wiki/${encodeURIComponent(name)}`
               link.target = '_blank'
               link.rel = 'noopener'
               link.textContent = name
               item.append(link)
               list.append(item)
-            })
+            }
             box.append(list)
           }
-          modal.show({
+          ctx.modal?.show({
             title: '使用的图片',
             content: box,
             sizeClass: 'dialog',
@@ -944,27 +1199,25 @@ export default {
         !confirm(
           session.remoteDirty
             ? 'VSCode 里还有未保存的修改，放弃并关闭编辑器？'
-            : '还有未提交到站点的修改，确定放弃？'
+            : '还有未提交到站点的修改，确定放弃？',
         )
       ) {
         return
       }
-      try {
-        send({type: 'finish', sessionId: session.id, result: pending ? 'discarded' : 'unchanged'})
-      } catch {
-        // ignore
-      }
+      send({
+        type: 'finish',
+        sessionId: session.id,
+        result: pending ? 'discarded' : 'unchanged',
+      })
       window.removeEventListener('beforeunload', onBeforeUnload)
       restorePage()
       endSession()
     }
 
-    function showBar(modal: any): void {
+    function showBar(modal: IPEModal | null): void {
       try {
-        if (modal) modal.close()
-      } catch {
-        // ignore
-      }
+        modal?.close()
+      } catch {}
       ensureBar()
     }
 
@@ -979,56 +1232,75 @@ export default {
       const minorInput = bar.querySelector<HTMLInputElement>('.mwe-ipe-minor')
       const watchInput = bar.querySelector<HTMLSelectElement>('.mwe-ipe-watchlist')
       const reloadInput = bar.querySelector<HTMLInputElement>('.mwe-ipe-reload')
-      session.watchlist = watchInput ? watchInput.value : 'nochange'
-      session.reload = !!(reloadInput && reloadInput.checked)
+      session.watchlist = parseWatchlist(watchInput?.value || 'nochange')
+      session.reload = !!reloadInput?.checked
       setStatus('正在保存文件…')
       send({
-        type: 'request-save',
+        type: 'save',
         sessionId: session.id,
-        summary: summaryInput ? summaryInput.value : '',
-        minor: !!(minorInput && minorInput.checked),
+        summary: summaryInput?.value || '',
+        minor: !!minorInput?.checked,
       })
     }
 
-    async function saveEdit(text: string, summary: string, minor: boolean): Promise<void> {
+    async function saveEdit(
+      text: string,
+      summary: string | undefined,
+      minor: boolean | undefined,
+      requestId?: string,
+    ): Promise<void> {
       if (!session) return
+      const sessionId = session.id
       try {
         await session.wikiPage.edit({
           text,
           summary: summary || '',
           minor: !!minor,
           section: session.section,
-          watchlist: session.watchlist || 'nochange',
+          watchlist: session.watchlist || parseWatchlist('nochange'),
         })
         window.removeEventListener('beforeunload', onBeforeUnload)
-        send({type: 'save-result', sessionId: session.id, ok: true})
+        session.text = text
+        session.changed = false
+        storePendingConfirm(sessionId)
+        send({type: 'save-result', sessionId, requestId, ok: true})
         send({
           type: 'finish',
-          sessionId: session.id,
+          sessionId,
           result: 'saved',
           summary: summary || '',
           minor: !!minor,
         })
-        setStatus(session.reload === false ? '已保存' : '已保存，正在刷新…', 'ok')
-        setBusy(false)
         if (session.reload !== false) {
+          setStatus('已保存，正在刷新并等待确认…', 'ok')
+          setBusy(false)
           window.setTimeout(() => location.reload(), 800)
+          return
         }
-      } catch (e) {
-        const message = e instanceof Error ? e.message : String(e)
+        const shown = await renderPreview()
+        if (shown) {
+          setStatus('已保存，新内容已显示', 'ok')
+          sendPendingConfirm()
+        } else {
+          setStatus('已保存，但未能确认新内容；临时文件保留，刷新页面后会再次确认', 'error')
+        }
         setBusy(false)
-        send({type: 'save-result', sessionId: session.id, ok: false, error: message})
-        setStatus('保存失败：' + message, 'error')
+        endSession()
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        setBusy(false)
+        send({type: 'save-result', sessionId, requestId, ok: false, error: message})
+        setStatus(`保存失败：${message}`, 'error')
       }
     }
 
     // ---------- click -> locate ----------
     function onClick(event: MouseEvent): void {
       if (!session) return
-      const target = event.target as Element | null
-      if (target?.closest && !target.closest('#mw-content-text')) return
-      const anchor = target?.closest?.('a') as HTMLAnchorElement | null
-      if (anchor) {
+      const target = event.target instanceof Element ? event.target : null
+      if (target?.closest('#mw-content-text') == null) return
+      const anchor = target.closest('a')
+      if (anchor instanceof HTMLAnchorElement) {
         if (!isArticleLink(anchor)) return
         event.preventDefault()
         window.open(editUrlFor(anchor.href), '_blank', 'noopener')
@@ -1038,22 +1310,21 @@ export default {
       if (text) send({type: 'locate', sessionId: session.id, text})
     }
 
-    // ---------- registration / lifecycle ----------
+    // ---------- lifecycle ----------
+    pendingConfirm = readPendingConfirm()
     ensureGuardStyle()
     connect()
 
     ctx.on('quick-edit/show-modal', payload => {
       try {
         payload.modal.close()
-      } catch {
-        // ignore
-      }
+      } catch {}
       document.body.classList.remove('ipe-modal-no-scroll')
     })
 
     ctx.on('quick-edit/wiki-page', payload => {
-      startEdit(payload).catch(e => {
-        status('启动失败：' + (e instanceof Error ? e.message : String(e)))
+      startEdit(payload).catch(error => {
+        status(`启动失败：${error instanceof Error ? error.message : String(error)}`)
       })
     })
 
@@ -1074,9 +1345,7 @@ export default {
       }
       try {
         socket?.close()
-      } catch {
-        // ignore
-      }
+      } catch {}
       socket = null
       document.removeEventListener('click', onClick, true)
       restorePage()
@@ -1091,12 +1360,15 @@ export default {
       window.setTimeout(() => {
         if (disposed) return
         try {
-          const title = getMwConfig('wgPageName')
+          const title = getMwConfig<string>('wgPageName')
           if (!title) throw new Error('无法读取当前页面标题')
           if (typeof ctx.quickEdit !== 'function') throw new Error('InPageEdit 缺少 quickEdit')
           void ctx.quickEdit({title, section: autoEdit.section})
-        } catch (e) {
-          status('自动进入编辑失败：' + (e instanceof Error ? e.message : String(e)), 'error')
+        } catch (error) {
+          status(
+            `自动进入编辑失败：${error instanceof Error ? error.message : String(error)}`,
+            'error',
+          )
         }
       }, 0)
     }

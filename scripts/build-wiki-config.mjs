@@ -6,7 +6,7 @@ import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 
 const require = createRequire(import.meta.url);
-const {buildParserConfig, fetchSiteInfo} = require('../out/wiki-config.js');
+const {buildParserConfig, fetchSiteInfo} = require('../out/wiki/config.js');
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const site = process.argv[2];
 if (!site) {

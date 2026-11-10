@@ -1,28 +1,21 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { SessionState, WikiIdentity } from './protocol';
-
-export interface StoredWiki extends WikiIdentity {
-  url?: string;
-  host?: string;
-  api?: string;
-  articlePath?: string;
-  configPath?: string;
-  [key: string]: unknown;
-}
+import type {SessionState} from '../protocol';
+import type {WikiRecord} from '../wiki/registry';
 
 export interface StoredSession {
   sessionId: string;
   fsPath: string;
   title: string;
   section: number | null;
-  wiki: StoredWiki;
+  wiki: WikiRecord;
   revid?: number;
   basetimestamp?: string;
   starttimestamp?: string;
   created: number;
   state: SessionState;
   autoRestore: boolean;
+  awaitingConfirm?: boolean;
 }
 
 export class SessionStore {

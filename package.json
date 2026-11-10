@@ -128,14 +128,16 @@
     "@types/vscode": "^1.85.0",
     "@types/ws": "^8.18.2",
     "typescript": "^7.0.2",
-    "vite": "^8.3.7"
+    "vite": "^8.3.7",
+    "vscode-languageserver-types": "^3.18.5"
   },
   "scripts": {
-    "compile": "tsc -p tsconfig.json",
+    "compile": "npm run clean && tsc -p tsconfig.json",
     "watch": "tsc -w -p tsconfig.json",
     "vscode:prepublish": "npm run compile",
     "test": "npm run compile && node --test test/*.test.mjs",
     "build:ipe": "npm run typecheck:ipe && vite build --config ipe-plugin/vite.config.ts && node scripts/update-ipe-registry.mjs",
-    "typecheck:ipe": "tsc -p ipe-plugin/tsconfig.json --noEmit"
+    "typecheck:ipe": "tsc -p ipe-plugin/tsconfig.json --noEmit",
+    "clean": "node -e \"require('node:fs').rmSync('out',{recursive:true,force:true})\""
   }
 }

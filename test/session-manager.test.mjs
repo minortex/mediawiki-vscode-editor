@@ -6,8 +6,8 @@ import test from 'node:test';
 import {createRequire} from 'node:module';
 
 const require = createRequire(import.meta.url);
-const {SessionStore} = require('../out/session-store.js');
-const {SessionManager} = require('../out/session-manager.js');
+const {SessionStore} = require('../out/sessions/store.js');
+const {SessionManager} = require('../out/sessions/manager.js');
 
 test('session manager persists, detaches, drafts and restores', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'session-manager-'));

@@ -1,23 +1,21 @@
-import type { SessionState } from './protocol';
-import type { SessionStore, StoredSession, StoredWiki } from './session-store';
-
-export interface SocketLike {
-  send(data: string): void;
-  readyState?: number;
-}
+import type {SessionState} from '../protocol';
+import type {SocketLike} from '../browser/server';
+import type {WikiRecord} from '../wiki/registry';
+import type {SessionStore, StoredSession} from './store';
 
 export interface SessionMeta {
   fsPath: string;
   ws: SocketLike | null;
   title: string;
   section: number | null;
-  wiki: StoredWiki;
+  wiki: WikiRecord;
   revid?: number;
   basetimestamp?: string;
   starttimestamp?: string;
   created: number;
   state: SessionState;
   autoRestore: boolean;
+  awaitingConfirm?: boolean;
 }
 
 export class SessionManager {
@@ -44,6 +42,7 @@ export class SessionManager {
         created: entry.created || Date.now(),
         state: 'draft',
         autoRestore: entry.autoRestore !== false,
+        awaitingConfirm: entry.awaitingConfirm === true,
       };
       this.sessions.set(entry.sessionId, meta);
       this.byPath.set(meta.fsPath, entry.sessionId);
@@ -72,6 +71,7 @@ export class SessionManager {
       created: meta.created,
       state: meta.state,
       autoRestore: meta.autoRestore,
+      awaitingConfirm: meta.awaitingConfirm,
     };
   }
 
@@ -151,13 +151,22 @@ export class SessionManager {
     return ids;
   }
 
-  markDraft(sessionId: string, autoRestore = false): void {
+  markDraft(sessionId: string, autoRestore = false, clearAwaitingConfirm = false): void {
     const meta = this.sessions.get(sessionId);
     if (!meta) return;
     if (meta.ws) this.wsSessions.get(meta.ws)?.delete(sessionId);
     meta.ws = null;
     meta.state = 'draft';
     meta.autoRestore = autoRestore;
+    if (clearAwaitingConfirm) meta.awaitingConfirm = false;
+    this.persist();
+    this.onChange();
+  }
+
+  markAwaitingConfirm(sessionId: string): void {
+    const meta = this.sessions.get(sessionId);
+    if (!meta) return;
+    meta.awaitingConfirm = true;
     this.persist();
     this.onChange();
   }
@@ -172,7 +181,7 @@ export class SessionManager {
   }
 
   drafts(): Array<[string, SessionMeta]> {
-    return this.entries().filter(([, meta]) => meta.state === 'draft');
+    return this.entries().filter(([, meta]) => meta.state === 'draft' && !meta.awaitingConfirm);
   }
 
   registerSocket(ws: SocketLike): void {

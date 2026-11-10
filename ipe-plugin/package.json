@@ -3,7 +3,7 @@
   "version": "0.9.0",
   "private": true,
   "type": "module",
-  "module": "./dist/index.CxKWGT2e.mjs",
+  "module": "./dist/index.BssJWMBS.mjs",
   "files": [
     "dist"
   ],
@@ -19,7 +19,7 @@
     ],
     "loader": {
       "kind": "module",
-      "entry": "dist/index.CxKWGT2e.mjs",
+      "entry": "dist/index.BssJWMBS.mjs",
       "main_export": "default"
     }
   }

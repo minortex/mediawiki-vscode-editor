@@ -79,8 +79,15 @@ export interface RequestSaveMessage {
 export interface SaveResultMessage {
   type: 'save-result';
   sessionId: string;
+  requestId?: string;
   ok: boolean;
   error?: string;
+}
+
+export interface SaveConfirmedMessage {
+  type: 'save-confirmed';
+  sessionId: string;
+  origin?: string;
 }
 
 export interface HeartbeatMessage {
@@ -97,6 +104,7 @@ export type BrowserMessage =
   | LocateMessage
   | RequestSaveMessage
   | SaveResultMessage
+  | SaveConfirmedMessage
   | HeartbeatMessage;
 
 export interface WikiRegisteredMessage {
@@ -157,9 +165,17 @@ export interface ScrollMessage {
 export interface SaveMessage {
   type: 'save';
   sessionId: string;
+  requestId?: string;
   text: string;
   summary?: string;
   minor?: boolean;
+}
+
+export interface SaveConfirmedResultMessage {
+  type: 'save-confirmed-result';
+  sessionId: string;
+  ok: boolean;
+  error?: string;
 }
 
 export interface EditorClosedMessage {
@@ -187,6 +203,7 @@ export type ExtensionMessage =
   | DirtyStateMessage
   | ScrollMessage
   | SaveMessage
+  | SaveConfirmedResultMessage
   | FinishMessage
   | EditorClosedMessage
   | PreemptedMessage

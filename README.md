@@ -47,7 +47,7 @@ VSCode --保存--> 浏览器（action=parse 渲染预览）
 - 点正文里的 wiki 内链，会在新标签打开目标页并进入 IPE 编辑态，同时在 VSCode 打开目标页源码。当前标签的会话保留，可多标签并行。
 - 外链、红链、特殊页面、编辑/历史链接不拦截。
 - 取消或关闭浏览器标签时，扩展会关闭对应的 VSCode 编辑器；若文件有未保存修改，VSCode 会弹出自己的保存提示，只有真正关闭后临时文件才删除。
-- 提交成功后编辑器关闭，临时文件删除。
+- 提交成功、浏览器刷新并显示新内容后，编辑器关闭并删除临时文件；如果刷新失败或页面没有确认新内容，临时文件保留，避免丢失草稿。
 - 浏览器刷新或重新打开同一页面时，只要扩展仍有该条目的活动会话（编辑器打开），网页会自动恢复编辑态并重新绑定；没有超时清理。
 - 编辑器被手动关闭后，会话转为草稿：网页退出编辑态，临时文件保留。可用 `MediaWiki: 恢复编辑草稿` 重新打开编辑器并恢复会话。
 - 扩展命令 `MediaWiki: 在浏览器中打开当前条目`：在浏览器打开当前活动编辑会话对应的页面；若会话仍存在，网页加载后会自动恢复编辑态。
@@ -145,10 +145,21 @@ WIKI_URL=https://example.org BROWSER_PORT=9222 node test/survey.mjs
 
 扩展端修改 TypeScript 后运行 `npm run compile`；打包 VSIX 时 `vscode:prepublish` 会自动编译到 `out/`。
 
+源码按职责组织：
+
+```text
+src/browser/   WebSocket 服务与消息桥
+src/sessions/  会话状态、持久化与消息编排
+src/wiki/      站点配置与注册表
+src/editor/    AST 文本定位
+src/language/  VSCode 语言功能与 LSP 类型转换
+src/extension.ts  激活、命令和编辑器事件
+```
+
 浏览器端 InPageEdit 插件修改 `ipe-plugin/src/index.ts` 后运行：
 
 ```sh
 npm run build:ipe
 ```
 
-该命令会类型检查、用 Vite 生成带内容哈希的 `ipe-plugin/dist/index.<hash>.mjs`，并同步更新 `ipe-plugin/package.json` 与 `ipe-plugin/registry.json` 的 `module` 入口。构建产物需要提交，因为插件商店和 GitHub Pages 直接加载它。
+该命令会类型检查、用 Vite 生成带内容哈希的 `ipe-plugin/dist/index.<hash>.mjs`，并同步更新 `ipe-plugin/package.json` 与 `ipe-plugin/registry.json` 的 `module` 入口。`ipe-plugin/dist/` 是构建产物，已被 `.gitignore` 排除；发布流程必须在部署前执行 `npm run build:ipe`，并上传生成的 `dist/`。

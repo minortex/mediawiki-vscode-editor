@@ -1,43 +1,48 @@
-import type { ExtensionMessage } from './protocol';
-import {startWsServer, type SocketLike} from './ws-server';
+import type {
+  BrowserMessage,
+  ExtensionMessage,
+  NavigateEditMessage,
+  SaveMessage,
+} from '../protocol';
+import {startWsServer, type SocketLike} from './server';
+import type {WebSocketServer} from 'ws';
+import type {IncomingMessage} from 'node:http';
+
+type OutgoingRequest = Omit<NavigateEditMessage, 'requestId'> | Omit<SaveMessage, 'requestId'>;
 
 export interface StartOptions {
   port: number;
   allowedOrigin?: string;
-  onMessage(msg: any, ws: SocketLike): void | Promise<void>;
-  onConnection?(ws: SocketLike, req?: unknown): void;
+  onMessage(msg: BrowserMessage, ws: SocketLike): void | Promise<void>;
+  onConnection?(ws: SocketLike, req: IncomingMessage): void;
   onError?(error: Error): void;
 }
 
 interface PendingRequest {
-  resolve(value: any): void;
+  resolve(value: unknown): void;
   reject(error: Error): void;
   timer: NodeJS.Timeout;
 }
 
 export class BrowserBridge {
-  private wss: any = null;
+  private wss: WebSocketServer | null = null;
   private readonly pending = new Map<string, PendingRequest>();
   private sequence = 0;
 
   get connectionCount(): number {
-    return this.wss?.clients?.size ?? 0;
+    return this.wss?.clients.size ?? 0;
   }
 
   start(options: StartOptions): void {
     this.wss = startWsServer({
       port: options.port,
       allowedOrigin: options.allowedOrigin,
-      onConnection: (ws: SocketLike, req?: unknown) => {
-        options.onConnection?.(ws, req);
-      },
-      onError: (error: Error) => options.onError?.(error),
-      onMessage: (msg: any, ws: SocketLike) => {
+      onConnection: (ws, req) => options.onConnection?.(ws, req),
+      onError: error => options.onError?.(error),
+      onMessage: (msg, ws) => {
         if (this.resolveRequest(msg)) return;
         const result = options.onMessage(msg, ws);
-        if (result && typeof (result as Promise<void>).catch === 'function') {
-          (result as Promise<void>).catch(() => {});
-        }
+        if (result instanceof Promise) result.catch(() => {});
       },
     });
   }
@@ -54,7 +59,7 @@ export class BrowserBridge {
     this.wss = null;
   }
 
-  send(ws: SocketLike, message: ExtensionMessage | Record<string, unknown>): boolean {
+  send(ws: SocketLike, message: ExtensionMessage): boolean {
     try {
       ws.send(JSON.stringify(message));
       return true;
@@ -63,7 +68,7 @@ export class BrowserBridge {
     }
   }
 
-  broadcast(message: ExtensionMessage | Record<string, unknown>): number {
+  broadcast(message: ExtensionMessage): number {
     if (!this.wss) return 0;
     const data = JSON.stringify(message);
     let count = 0;
@@ -76,19 +81,19 @@ export class BrowserBridge {
     return count;
   }
 
-  request<T = any>(
-    ws: SocketLike,
-    message: Record<string, unknown>,
-    timeoutMs = 5000,
-  ): Promise<T> {
+  request<T = unknown>(ws: SocketLike, message: OutgoingRequest, timeoutMs = 5000): Promise<T> {
     const requestId = `req-${++this.sequence}`;
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(requestId);
         reject(new Error('浏览器未响应请求'));
       }, timeoutMs);
-      this.pending.set(requestId, {resolve, reject, timer});
-      if (!this.send(ws, {...message, requestId})) {
+      this.pending.set(requestId, {
+        resolve: value => resolve(value as T),
+        reject,
+        timer,
+      });
+      if (!this.send(ws, {...message, requestId} as ExtensionMessage)) {
         clearTimeout(timer);
         this.pending.delete(requestId);
         reject(new Error('浏览器未连接'));
@@ -96,14 +101,20 @@ export class BrowserBridge {
     });
   }
 
-  private resolveRequest(msg: any): boolean {
-    if (!msg || typeof msg.requestId !== 'string') return false;
+  private resolveRequest(msg: BrowserMessage): boolean {
+    if (!('requestId' in msg) || typeof msg.requestId !== 'string') return false;
     const pending = this.pending.get(msg.requestId);
     if (!pending) return false;
     clearTimeout(pending.timer);
     this.pending.delete(msg.requestId);
-    if (msg.ok === false) pending.reject(new Error(msg.error || '浏览器请求失败'));
-    else pending.resolve(msg);
+    if ('ok' in msg && msg.ok === false) {
+      const error = 'error' in msg && typeof msg.error === 'string'
+        ? msg.error
+        : '浏览器请求失败';
+      pending.reject(new Error(error));
+    } else {
+      pending.resolve(msg);
+    }
     return true;
   }
 }

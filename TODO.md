@@ -12,9 +12,9 @@
 ## P1 拆分职责
 
 - [x] 抽出 `protocol`：WebSocket 消息、状态枚举、请求/响应类型（`src/protocol.ts`）。
-- [x] 抽出 `session-store`：`sessions.json` 的读取、原子写入（`src/session-store.ts`）。
-- [x] 抽出 `session-manager`：`attached` / `detached` / `draft` 状态与持久化（`src/session-manager.ts`）。
-- [x] 抽出 `browser-bridge`：连接、广播、请求/响应等待（`src/browser-bridge.ts`）。
+- [x] 抽出 `session-store`：`sessions.json` 的读取、原子写入（`src/sessions/store.ts`）。
+- [x] 抽出 `session-manager`：`attached` / `detached` / `draft` 状态与持久化（`src/sessions/manager.ts`）。
+- [x] 抽出 `browser-bridge`：连接、广播、请求/响应等待（`src/browser/bridge.ts`）。
 - [x] `extension.js` 只保留激活、命令、消息路由和编辑器事件；会话编排抽到 `lib/session-controller.js`。
 - [x] `lib/language.js` 拆成配置加载、转换、语义高亮、定义跳转（`lib/language/*`）。
 - [x] 为 session 状态与持久化补单元测试（`test/session-manager.test.mjs`）。
@@ -24,7 +24,7 @@
 - [x] 添加 TypeScript 工具链（`tsconfig.json`，Node16/CJS 输出到 `out/`）。
 - [x] 先迁 `protocol`、`session-store`。
 - [x] 迁 `session-manager`。
-- [x] 迁 `wiki`（`src/wiki-config.ts`、`src/wikis.ts`）。
+- [x] 迁 `wiki`（`src/wiki/config.ts`、`src/wiki/registry.ts`）。
 - [x] 再迁 `extension`、`language`、`items`、`session-controller`。
 - [x] 保持 `node_modules` 外部依赖，不对 `wikiparser-node` 做单文件打包。
 - [x] 浏览器端 IPE 插件迁移到 TypeScript + Vite ES module。
@@ -34,6 +34,8 @@
 - [x] 统一定位与语言服务的 AST 解析：`items` 复用 `languageFeatures.ast(document)` 的缓存。
 - [ ] 更新 README、版本说明和发布流程。
 - [x] 全部 TypeScript 源码已开启 `noImplicitAny`，`npm run compile` 通过。
+- [x] 清除 `src` 中的 `require` / `module.exports` / `'use strict'` / 显式 `any`，统一 ESM 导入导出。
+- [x] 按职责重组目录：`browser/`、`sessions/`、`wiki/`、`editor/`、`language/`。
 
 ## 已实现，不再跟踪
 
