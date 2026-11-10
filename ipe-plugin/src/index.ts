@@ -77,6 +77,7 @@ interface Session {
   remoteDirty: boolean
   changed: boolean
   busy: boolean
+  conflict?: boolean
   watchlist?: WatchlistAction
   reload?: boolean
   fullOriginal?: Node[]
@@ -1226,7 +1227,12 @@ export default {
       }
       if (seq !== previewSeq || !data.parse?.text) return false
       applyFull(data.parse.text)
-      setStatus(`预览已更新 ${new Date().toLocaleTimeString()}`)
+      setStatus(
+        session.conflict
+          ? '检测到编辑冲突，已载入冲突标记；处理后再提交'
+          : `预览已更新 ${new Date().toLocaleTimeString()}`,
+        session.conflict ? 'error' : undefined,
+      )
       return true
     }
 
@@ -1311,6 +1317,7 @@ export default {
         remoteDirty: !!info.dirty,
         changed: false,
         busy: false,
+        conflict: false,
       }
       window.addEventListener('beforeunload', onBeforeUnload)
       showBar(null)
@@ -1351,6 +1358,7 @@ export default {
         remoteDirty: false,
         changed: false,
         busy: false,
+        conflict: false,
       }
       window.addEventListener('beforeunload', onBeforeUnload)
       showBar(payload.modal)
@@ -1488,6 +1496,7 @@ export default {
       const revision = latest.revisions[0]
       if (!revision) return false
       session.wikiPage = latest
+      session.conflict = true
       send({
         type: 'conflict',
         sessionId: session.id,
@@ -1537,6 +1546,7 @@ export default {
         window.removeEventListener('beforeunload', onBeforeUnload)
         session.text = text
         session.changed = false
+        session.conflict = false
         storePendingConfirm(sessionId)
         send({type: 'save-result', sessionId, requestId, ok: true})
         send({
