@@ -3,8 +3,8 @@
  */
 (function () {
   'use strict';
-  if (window.__vcpeIpeRegistered) return;
-  window.__vcpeIpeRegistered = true;
+  if (window.__mweIpeRegistered) return;
+  window.__mweIpeRegistered = true;
 
   var WS_URL = 'ws://127.0.0.1:8927';
   var RECONNECT_MS = 5000;
@@ -21,9 +21,9 @@
 
   // ---------- hide the native quick-edit modal before it paints ----------
   function ensureGuardStyle() {
-    if (document.getElementById('vcpe-ipe-guard-style')) return;
+    if (document.getElementById('mwe-ipe-guard-style')) return;
     var style = document.createElement('style');
-    style.id = 'vcpe-ipe-guard-style';
+    style.id = 'mwe-ipe-guard-style';
     style.textContent = [
       '.ipe-modal-modal__window.ipe-quickEdit{display:none!important;}',
       '.ipe-modal-backdrop:has(+ .ipe-modal-modal .ipe-quickEdit){display:none!important;}',
@@ -32,35 +32,35 @@
   }
 
   // ---------- bottom bar ----------
-  var barStyleId = 'vcpe-ipe-bar-style';
+  var barStyleId = 'mwe-ipe-bar-style';
 
   function ensureBarStyle() {
     if (document.getElementById(barStyleId)) return;
     var style = document.createElement('style');
     style.id = barStyleId;
     style.textContent = [
-      '.vcpe-ipe-bar{position:fixed;left:0;right:0;bottom:0;z-index:2147483001;display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:#fff;border-top:2px solid #3366cc;padding:10px 16px;box-shadow:0 -2px 12px rgba(0,0,0,.15);font-size:14px;color:#202122;}',
-      '.vcpe-ipe-bar .vcpe-ipe-status{flex:1 1 180px;color:#72777d;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
-      '.vcpe-ipe-bar .vcpe-ipe-status.error{color:#d33;}',
-      '.vcpe-ipe-bar .vcpe-ipe-status.ok{color:#14866d;}',
-      '.vcpe-ipe-bar input[type=text]{flex:1 1 220px;min-width:160px;padding:6px 10px;border:1px solid #a2a9b1;border-radius:4px;font-size:14px;}',
-      '.vcpe-ipe-bar select{padding:6px 10px;border:1px solid #a2a9b1;border-radius:4px;background:#fff;font-size:14px;color:#202122;}',
-      '.vcpe-ipe-bar button{padding:6px 14px;border-radius:4px;border:1px solid #a2a9b1;background:#f8f9fa;cursor:pointer;font-size:14px;color:#202122;}',
-      '.vcpe-ipe-bar button:hover{background:#eaecf0;}',
-      '.vcpe-ipe-bar button.is-primary{background:#3366cc;border-color:#3366cc;color:#fff;font-weight:600;}',
-      '.vcpe-ipe-bar button.is-primary:hover{background:#2a56a8;}',
-      '.vcpe-ipe-bar .vcpe-ipe-link{color:#3366cc;font-size:13px;text-decoration:none;cursor:pointer;white-space:nowrap;}',
-      '.vcpe-ipe-bar .vcpe-ipe-link:hover{text-decoration:underline;}',
-      '.vcpe-ipe-bar label{display:flex;align-items:center;gap:4px;white-space:nowrap;}',
-      'body.vcpe-ipe-editing{padding-bottom:96px;}',
+      '.mwe-ipe-bar{position:fixed;left:0;right:0;bottom:0;z-index:2147483001;display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:#fff;border-top:2px solid #3366cc;padding:10px 16px;box-shadow:0 -2px 12px rgba(0,0,0,.15);font-size:14px;color:#202122;}',
+      '.mwe-ipe-bar .mwe-ipe-status{flex:1 1 180px;color:#72777d;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+      '.mwe-ipe-bar .mwe-ipe-status.error{color:#d33;}',
+      '.mwe-ipe-bar .mwe-ipe-status.ok{color:#14866d;}',
+      '.mwe-ipe-bar input[type=text]{flex:1 1 220px;min-width:160px;padding:6px 10px;border:1px solid #a2a9b1;border-radius:4px;font-size:14px;}',
+      '.mwe-ipe-bar select{padding:6px 10px;border:1px solid #a2a9b1;border-radius:4px;background:#fff;font-size:14px;color:#202122;}',
+      '.mwe-ipe-bar button{padding:6px 14px;border-radius:4px;border:1px solid #a2a9b1;background:#f8f9fa;cursor:pointer;font-size:14px;color:#202122;}',
+      '.mwe-ipe-bar button:hover{background:#eaecf0;}',
+      '.mwe-ipe-bar button.is-primary{background:#3366cc;border-color:#3366cc;color:#fff;font-weight:600;}',
+      '.mwe-ipe-bar button.is-primary:hover{background:#2a56a8;}',
+      '.mwe-ipe-bar .mwe-ipe-link{color:#3366cc;font-size:13px;text-decoration:none;cursor:pointer;white-space:nowrap;}',
+      '.mwe-ipe-bar .mwe-ipe-link:hover{text-decoration:underline;}',
+      '.mwe-ipe-bar label{display:flex;align-items:center;gap:4px;white-space:nowrap;}',
+      'body.mwe-ipe-editing{padding-bottom:96px;}',
     ].join('\n');
     document.head.append(style);
   }
 
   function refreshBar() {
-    var bar = document.querySelector('.vcpe-ipe-bar');
+    var bar = document.querySelector('.mwe-ipe-bar');
     if (!bar || !session) return;
-    var submit = bar.querySelector('.vcpe-ipe-submit');
+    var submit = bar.querySelector('.mwe-ipe-submit');
     if (submit) submit.disabled = !!session.remoteDirty || !!session.busy;
     if (session.remoteDirty) {
       setStatus('VSCode 里有未保存修改，先保存文件（Ctrl+S）');
@@ -69,63 +69,63 @@
 
   function setBusy(busy) {
     if (session) session.busy = !!busy;
-    var bar = document.querySelector('.vcpe-ipe-bar');
+    var bar = document.querySelector('.mwe-ipe-bar');
     if (!bar) return;
     bar.querySelectorAll('button').forEach(function (b) { b.disabled = !!busy; });
     if (busy) setStatus('提交中…');
   }
 
   function setStatus(text, kind) {
-    var el = document.querySelector('.vcpe-ipe-status');
+    var el = document.querySelector('.mwe-ipe-status');
     if (!el) return;
     el.textContent = text || '';
-    el.className = 'vcpe-ipe-status' + (kind ? ' ' + kind : '');
+    el.className = 'mwe-ipe-status' + (kind ? ' ' + kind : '');
   }
 
   function ensureBar() {
     ensureBarStyle();
-    var bar = document.querySelector('.vcpe-ipe-bar');
+    var bar = document.querySelector('.mwe-ipe-bar');
     if (bar) return bar;
     bar = document.createElement('div');
-    bar.className = 'vcpe-ipe-bar';
+    bar.className = 'mwe-ipe-bar';
     bar.innerHTML =
-      '<span class="vcpe-ipe-status">VSCode 编辑中</span>' +
-      '<input type="text" class="vcpe-ipe-summary" placeholder="编辑摘要">' +
-      '<select class="vcpe-ipe-watchlist">' +
+      '<span class="mwe-ipe-status">VSCode 编辑中</span>' +
+      '<input type="text" class="mwe-ipe-summary" placeholder="编辑摘要">' +
+      '<select class="mwe-ipe-watchlist">' +
       '<option value="preferences">遵循 MW 首选</option>' +
       '<option value="nochange">保持当前状态</option>' +
       '<option value="watch">添加到监视列表</option>' +
       '<option value="unwatch">从监视列表移除</option>' +
       '</select>' +
-      '<label><input type="checkbox" class="vcpe-ipe-minor"> 小编辑</label>' +
-      '<label><input type="checkbox" class="vcpe-ipe-reload" checked> 保存后刷新</label>' +
-      '<button class="vcpe-ipe-submit is-primary">提交</button>' +
-      '<button class="vcpe-ipe-diff">差异</button>' +
-      '<a class="vcpe-ipe-link vcpe-ipe-upload">快速上传</a>' +
-      '<a class="vcpe-ipe-link vcpe-ipe-templates">使用的模板</a>' +
-      '<a class="vcpe-ipe-link vcpe-ipe-images">使用的图片</a>' +
-      '<button class="vcpe-ipe-cancel">取消</button>';
+      '<label><input type="checkbox" class="mwe-ipe-minor"> 小编辑</label>' +
+      '<label><input type="checkbox" class="mwe-ipe-reload" checked> 保存后刷新</label>' +
+      '<button class="mwe-ipe-submit is-primary">提交</button>' +
+      '<button class="mwe-ipe-diff">差异</button>' +
+      '<a class="mwe-ipe-link mwe-ipe-upload">快速上传</a>' +
+      '<a class="mwe-ipe-link mwe-ipe-templates">使用的模板</a>' +
+      '<a class="mwe-ipe-link mwe-ipe-images">使用的图片</a>' +
+      '<button class="mwe-ipe-cancel">取消</button>';
     document.body.append(bar);
-    document.body.classList.add('vcpe-ipe-editing');
-    bar.querySelector('.vcpe-ipe-submit').addEventListener('click', function () {
+    document.body.classList.add('mwe-ipe-editing');
+    bar.querySelector('.mwe-ipe-submit').addEventListener('click', function () {
       requestSave(bar);
     });
-    bar.querySelector('.vcpe-ipe-cancel').addEventListener('click', function () {
+    bar.querySelector('.mwe-ipe-cancel').addEventListener('click', function () {
       cancelEdit();
     });
-    bar.querySelector('.vcpe-ipe-upload').addEventListener('click', function () {
+    bar.querySelector('.mwe-ipe-upload').addEventListener('click', function () {
       var qu = window.ipe && window.ipe.get && window.ipe.get('quickUpload');
       if (qu && qu.showModal) qu.showModal();
     });
-    bar.querySelector('.vcpe-ipe-templates').addEventListener('click', function () {
+    bar.querySelector('.mwe-ipe-templates').addEventListener('click', function () {
       if (!session) return;
       var tu = window.ipe && window.ipe.get && window.ipe.get('templatesUsed');
       if (tu && tu.showModal) tu.showModal({ title: session.title });
     });
-    bar.querySelector('.vcpe-ipe-images').addEventListener('click', function () {
+    bar.querySelector('.mwe-ipe-images').addEventListener('click', function () {
       showImagesUsed();
     });
-    bar.querySelector('.vcpe-ipe-diff').addEventListener('click', function () {
+    bar.querySelector('.mwe-ipe-diff').addEventListener('click', function () {
       if (!session) return;
       var qd = window.ipe && window.ipe.get && window.ipe.get('quickDiff');
       if (!qd) return;
@@ -451,13 +451,13 @@
   function executeScripts(root) {
     if (!root) return;
     root.querySelectorAll && root.querySelectorAll('script').forEach(function (old) {
-      if (old.dataset.vcpeExecuted) return;
+      if (old.dataset.mweExecuted) return;
       var script = document.createElement('script');
       for (var i = 0; i < old.attributes.length; i++) {
         script.setAttribute(old.attributes[i].name, old.attributes[i].value);
       }
       script.textContent = old.textContent;
-      script.dataset.vcpeExecuted = '1';
+      script.dataset.mweExecuted = '1';
       old.replaceWith(script);
     });
   }
@@ -533,9 +533,9 @@
     session = null;
     clearTimeout(previewTimer);
     window.removeEventListener('beforeunload', onBeforeUnload);
-    var bar = document.querySelector('.vcpe-ipe-bar');
+    var bar = document.querySelector('.mwe-ipe-bar');
     if (bar) bar.remove();
-    document.body.classList.remove('vcpe-ipe-editing');
+    document.body.classList.remove('mwe-ipe-editing');
   }
 
   async function startEdit(payload) {
@@ -644,10 +644,10 @@
       return;
     }
     setBusy(true);
-    var summaryInput = bar.querySelector('.vcpe-ipe-summary');
-    var minorInput = bar.querySelector('.vcpe-ipe-minor');
-    var watchInput = bar.querySelector('.vcpe-ipe-watchlist');
-    var reloadInput = bar.querySelector('.vcpe-ipe-reload');
+    var summaryInput = bar.querySelector('.mwe-ipe-summary');
+    var minorInput = bar.querySelector('.mwe-ipe-minor');
+    var watchInput = bar.querySelector('.mwe-ipe-watchlist');
+    var reloadInput = bar.querySelector('.mwe-ipe-reload');
     session.watchlist = watchInput ? watchInput.value : 'nochange';
     session.reload = !!(reloadInput && reloadInput.checked);
     setStatus('正在保存文件…');

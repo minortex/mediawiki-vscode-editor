@@ -2,7 +2,7 @@
   "name": "mediawiki-vscode-editor",
   "displayName": "MediaWiki ⇄ VSCode External Editor",
   "description": "Edit MediaWiki pages in VSCode; the browser previews on save and performs the edit",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "publisher": "local",
   "license": "MIT",
   "engines": {
@@ -89,7 +89,7 @@
         "mediawikiEditor.parserConfig": {
           "type": "string",
           "default": "",
-          "description": "解析配置 JSON 的绝对路径或相对工作区路径；留空使用内置 vcpedia 配置。"
+          "description": "解析配置 JSON 的绝对路径或相对工作区路径；留空使用内置默认解析配置。"
         }
       }
     },

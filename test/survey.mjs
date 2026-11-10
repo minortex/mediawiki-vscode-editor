@@ -13,7 +13,13 @@ const SCRIPT = fs.readFileSync(
 );
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const fetchT = (u, o = {}) => fetch(u, { ...o, signal: AbortSignal.timeout(2000) });
-const API = 'https://vcpedia.cn/api.php';
+const WIKI = (process.env.WIKI_URL || '').replace(/\/+$/u, '');
+if (!WIKI) {
+  console.error('WIKI_URL is required, e.g. WIKI_URL=https://example.org');
+  process.exit(1);
+}
+const API = process.env.API_URL || new URL('/api.php', WIKI).href;
+const ORIGIN = new URL(WIKI).origin;
 const BROWSER = Number(process.env.BROWSER_PORT || 9222);
 
 async function api(params) {
@@ -105,7 +111,7 @@ async function newTarget(url) {
 }
 function pageUrl(title) {
   const t = title.replace(/ /g, '_');
-  return 'https://vcpedia.cn/' + t.split('/').map((s) => encodeURIComponent(s).replace(/%3A/gi, ':')).join('/');
+  return WIKI + '/' + t.split('/').map((s) => encodeURIComponent(s).replace(/%3A/gi, ':')).join('/');
 }
 function connect(wsUrl) {
   return new Promise((resolve, reject) => {
@@ -139,7 +145,7 @@ function connect(wsUrl) {
 const wss = new WebSocketServer({
   host: '127.0.0.1',
   port: 8927,
-  verifyClient: (i, d) => d(!i.req.headers.origin || i.req.headers.origin === 'https://vcpedia.cn'),
+  verifyClient: (i, d) => d(!i.req.headers.origin || i.req.headers.origin === ORIGIN),
 });
 wss.on('error', (err) => {
   console.error('cannot listen on 8927 (stop VSCodium first):', err.message);
@@ -204,16 +210,16 @@ for (const title of PAGES) {
     continue;
   }
 
-  await ev(`document.getElementById('vcpe-fab')?.remove(); document.querySelector('.vcpe-bar')?.remove();`);
+  await ev(`document.getElementById('mwe-fab')?.remove(); document.querySelector('.mwe-bar')?.remove();`);
   await ev(SCRIPT);
   for (let i = 0; i < 8; i++) {
-    if (await ev(`document.getElementById('vcpe-fab')?.textContent === 'VSCode 编辑'`)) break;
+    if (await ev(`document.getElementById('mwe-fab')?.textContent === 'VSCode 编辑'`)) break;
     await sleep(250);
   }
-  await ev(`document.getElementById('vcpe-fab').click()`);
+  await ev(`document.getElementById('mwe-fab').click()`);
   let ready = false;
   for (let i = 0; i < 8; i++) {
-    if (await ev(`(document.querySelector('.vcpe-bar .vcpe-status')?.textContent || '').includes('预览已更新')`)) {
+    if (await ev(`(document.querySelector('.mwe-bar .mwe-status')?.textContent || '').includes('预览已更新')`)) {
       ready = true; break;
     }
     await sleep(250);
@@ -251,7 +257,7 @@ for (const title of PAGES) {
     ]);
   }
 
-  await ev(`document.querySelector('.vcpe-cancel')?.click()`).catch(() => {});
+  await ev(`document.querySelector('.mwe-cancel')?.click()`).catch(() => {});
   await sleep(150);
   await fetchT('http://127.0.0.1:' + BROWSER + '/json/close/' + target.id).catch(() => {});
   cdp.close();

@@ -1,8 +1,8 @@
 /* Stable entry: fetch the current plugin version (cache-busted) and load it. */
 (function () {
   'use strict';
-  if (window.__vcpeLoaderRan) return;
-  window.__vcpeLoaderRan = true;
+  if (window.__mweLoaderRan) return;
+  window.__mweLoaderRan = true;
   var base = 'https://minortex.github.io/mediawiki-vscode-editor/ipe-plugin/';
   fetch(base + 'version.json?t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); })

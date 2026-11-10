@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         MediaWiki ⇄ VSCode 外部编辑器
 // @namespace    mediawiki-vscode-editor
-// @version      0.3.4
-// @description  在 vcpedia.cn 上发起编辑，用 VSCode 改，保存即预览，浏览器内提交
-// @match        https://vcpedia.cn/*
+// @version      0.4.0
+// @description  在 MediaWiki 站点发起编辑，用 VSCode 改，保存即预览，浏览器内提交
+// @match        *://*/*
 // @grant        none
 // @run-at       document-idle
 // @noframes
@@ -11,15 +11,16 @@
 
 (() => {
   'use strict';
+  if (!window.mw || !mw.config || !mw.config.get('wgPageName')) return;
 
-  console.info('[mediawiki-vscode] userscript 0.3.4 loaded');
+  console.info('[mediawiki-vscode] userscript 0.4.0 loaded');
 
   const WS_URL = 'ws://127.0.0.1:8927';
   const RECONNECT_MS = 1000;
   // 默认 vscodium://；VS Code 可在本站控制台执行
-  // localStorage.setItem('vcpe-editor-scheme', 'vscode') 切换
+  // localStorage.setItem('mwe-editor-scheme', 'vscode') 切换
   const EDITOR_SCHEME =
-    localStorage.getItem('vcpe-editor-scheme') || 'vscodium';
+    localStorage.getItem('mwe-editor-scheme') || 'vscodium';
   const EDITOR_URI = `${EDITOR_SCHEME}://local.mediawiki-vscode-editor/wake`;
 
   // ---------- 与站点 API 交互 ----------
@@ -115,40 +116,40 @@
 
   // ---------- 界面 ----------
   const css = `
-    .vcpe-fab{position:fixed;right:20px;bottom:24px;z-index:2147483000;display:flex;gap:8px;align-items:center;
+    .mwe-fab{position:fixed;right:20px;bottom:24px;z-index:2147483000;display:flex;gap:8px;align-items:center;
       background:#3366cc;color:#fff;border:none;border-radius:999px;padding:10px 16px;font-size:14px;font-weight:600;
       box-shadow:0 2px 10px rgba(0,0,0,.3);cursor:pointer}
-    .vcpe-fab:hover{background:#2a56a8}
-    .vcpe-fab.offline{background:#72777d}
-    .vcpe-sec{margin-left:6px;padding:0 6px;border:1px solid #a2a9b1;border-radius:3px;font-size:12px;
+    .mwe-fab:hover{background:#2a56a8}
+    .mwe-fab.offline{background:#72777d}
+    .mwe-sec{margin-left:6px;padding:0 6px;border:1px solid #a2a9b1;border-radius:3px;font-size:12px;
       text-decoration:none;background:#f8f9fa;color:#3366cc}
-    .vcpe-sec:hover{background:#eaf3ff}
-    .vcpe-bar{position:fixed;left:0;right:0;bottom:0;z-index:2147483001;display:flex;gap:10px;align-items:center;
+    .mwe-sec:hover{background:#eaf3ff}
+    .mwe-bar{position:fixed;left:0;right:0;bottom:0;z-index:2147483001;display:flex;gap:10px;align-items:center;
       flex-wrap:wrap;background:#fff;border-top:2px solid #3366cc;padding:10px 16px;
       box-shadow:0 -2px 12px rgba(0,0,0,.15);font-size:14px;color:#202122}
-    .vcpe-bar .vcpe-title{font-weight:700;margin-right:4px}
-    .vcpe-bar .vcpe-status{color:#72777d}
-    .vcpe-bar input[type=text]{flex:1 1 260px;min-width:180px;padding:6px 10px;border:1px solid #a2a9b1;border-radius:4px}
-    .vcpe-bar button{padding:6px 14px;border-radius:4px;border:1px solid #a2a9b1;background:#f8f9fa;cursor:pointer}
-    .vcpe-bar button.vcpe-save{background:#3366cc;border-color:#3366cc;color:#fff;font-weight:600}
-    .vcpe-bar button:disabled{opacity:.5;cursor:not-allowed}
-    .vcpe-bar label{display:flex;align-items:center;gap:4px;white-space:nowrap}
-    body.vcpe-editing{padding-bottom:80px}
+    .mwe-bar .mwe-title{font-weight:700;margin-right:4px}
+    .mwe-bar .mwe-status{color:#72777d}
+    .mwe-bar input[type=text]{flex:1 1 260px;min-width:180px;padding:6px 10px;border:1px solid #a2a9b1;border-radius:4px}
+    .mwe-bar button{padding:6px 14px;border-radius:4px;border:1px solid #a2a9b1;background:#f8f9fa;cursor:pointer}
+    .mwe-bar button.mwe-save{background:#3366cc;border-color:#3366cc;color:#fff;font-weight:600}
+    .mwe-bar button:disabled{opacity:.5;cursor:not-allowed}
+    .mwe-bar label{display:flex;align-items:center;gap:4px;white-space:nowrap}
+    body.mwe-editing{padding-bottom:80px}
   `;
 
   function injectStyle() {
-    if (document.getElementById('vcpe-style')) return;
+    if (document.getElementById('mwe-style')) return;
     const s = document.createElement('style');
-    s.id = 'vcpe-style';
+    s.id = 'mwe-style';
     s.textContent = css;
     document.head.append(s);
   }
 
   function ensureFab() {
-    if (document.getElementById('vcpe-fab')) return;
+    if (document.getElementById('mwe-fab')) return;
     const btn = document.createElement('button');
-    btn.id = 'vcpe-fab';
-    btn.className = 'vcpe-fab';
+    btn.id = 'mwe-fab';
+    btn.className = 'mwe-fab';
     btn.textContent = 'VSCode 编辑';
     btn.addEventListener('click', () => startEdit(null));
     document.body.append(btn);
@@ -156,13 +157,13 @@
   }
 
   function refreshStatus() {
-    const fab = document.getElementById('vcpe-fab');
+    const fab = document.getElementById('mwe-fab');
     if (fab) {
       fab.classList.remove('offline');
       fab.textContent = connected ? 'VSCode 编辑' : '启动 VSCode';
       fab.title = connected ? 'VSCode 扩展已连接' : '点击启动 VSCode 并开始编辑';
     }
-    const st = document.querySelector('.vcpe-status');
+    const st = document.querySelector('.mwe-status');
     if (st) st.textContent = connected ? '已连接 VSCode' : 'VSCode 扩展未连接，等待重连…';
   }
 
@@ -170,11 +171,11 @@
     const content = document.querySelector('#mw-content-text .mw-parser-output');
     if (!content) return;
     content.querySelectorAll('.mw-editsection a[href*="action=edit"]').forEach((a) => {
-      if (a.parentElement.querySelector('.vcpe-sec')) return;
+      if (a.parentElement.querySelector('.mwe-sec')) return;
       const section = new URL(a.href, location.href).searchParams.get('section');
       if (section == null) return;
       const link = document.createElement('a');
-      link.className = 'vcpe-sec';
+      link.className = 'mwe-sec';
       link.href = '#';
       link.textContent = 'VSCode';
       link.title = '用 VSCode 编辑本节';
@@ -184,10 +185,10 @@
   }
 
   function notify(text, ms = 3200) {
-    let el = document.getElementById('vcpe-toast');
+    let el = document.getElementById('mwe-toast');
     if (!el) {
       el = document.createElement('div');
-      el.id = 'vcpe-toast';
+      el.id = 'mwe-toast';
       el.style.cssText =
         'position:fixed;right:20px;bottom:84px;z-index:2147483002;max-width:360px;' +
         'background:#202122;color:#fff;padding:10px 14px;border-radius:6px;font-size:13px;' +
@@ -201,37 +202,37 @@
   }
 
   function bar() {
-    let el = document.querySelector('.vcpe-bar');
+    let el = document.querySelector('.mwe-bar');
     if (el) return el;
     el = document.createElement('div');
-    el.className = 'vcpe-bar';
+    el.className = 'mwe-bar';
     el.innerHTML = `
-      <span class="vcpe-title"></span>
-      <span class="vcpe-status"></span>
-      <input type="text" class="vcpe-summary" placeholder="编辑摘要">
-      <label><input type="checkbox" class="vcpe-minor"> 小编辑</label>
-      <button class="vcpe-save">保存更改</button>
-      <button class="vcpe-cancel">取消</button>
+      <span class="mwe-title"></span>
+      <span class="mwe-status"></span>
+      <input type="text" class="mwe-summary" placeholder="编辑摘要">
+      <label><input type="checkbox" class="mwe-minor"> 小编辑</label>
+      <button class="mwe-save">保存更改</button>
+      <button class="mwe-cancel">取消</button>
     `;
     document.body.append(el);
-    el.querySelector('.vcpe-save').addEventListener('click', submit);
-    el.querySelector('.vcpe-cancel').addEventListener('click', cancel);
+    el.querySelector('.mwe-save').addEventListener('click', submit);
+    el.querySelector('.mwe-cancel').addEventListener('click', cancel);
     return el;
   }
 
   function setBusy(busy) {
-    const el = document.querySelector('.vcpe-bar');
+    const el = document.querySelector('.mwe-bar');
     if (!el) return;
-    el.querySelector('.vcpe-save').disabled = busy || !!session?.remoteDirty;
-    el.querySelector('.vcpe-cancel').disabled = busy;
+    el.querySelector('.mwe-save').disabled = busy || !!session?.remoteDirty;
+    el.querySelector('.mwe-cancel').disabled = busy;
   }
 
   function refreshBar() {
-    const el = document.querySelector('.vcpe-bar');
+    const el = document.querySelector('.mwe-bar');
     if (!el || !session) return;
-    el.querySelector('.vcpe-save').disabled = !!session.remoteDirty;
+    el.querySelector('.mwe-save').disabled = !!session.remoteDirty;
     if (session.remoteDirty) {
-      el.querySelector('.vcpe-status').textContent =
+      el.querySelector('.mwe-status').textContent =
         'VSCode 里有未保存修改，先保存文件（Ctrl+S）';
     }
   }
@@ -241,7 +242,7 @@
   let previewSeq = 0;
 
   function schedulePreview() {
-    const el = document.querySelector('.vcpe-bar .vcpe-status');
+    const el = document.querySelector('.mwe-bar .mwe-status');
     if (el) el.textContent = '预览更新中…';
     clearTimeout(previewTimer);
     previewTimer = setTimeout(renderPreview, 250);
@@ -292,12 +293,12 @@
     };
     injectStyle();
     const b = bar();
-    b.querySelector('.vcpe-title').textContent =
+    b.querySelector('.mwe-title').textContent =
       section == null ? title : `${title} § ${section}`;
-    b.querySelector('.vcpe-status').textContent = '已发送到 VSCode，等待编辑…';
-    b.querySelector('.vcpe-summary').value = '';
-    b.querySelector('.vcpe-minor').checked = false;
-    document.body.classList.add('vcpe-editing');
+    b.querySelector('.mwe-status').textContent = '已发送到 VSCode，等待编辑…';
+    b.querySelector('.mwe-summary').value = '';
+    b.querySelector('.mwe-minor').checked = false;
+    document.body.classList.add('mwe-editing');
     send({
       type: 'open',
       sessionId: id,
@@ -386,11 +387,11 @@
   function executeScripts(root) {
     if (!root) return;
     root.querySelectorAll?.('script').forEach((old) => {
-      if (old.dataset.vcpeExecuted) return;
+      if (old.dataset.mweExecuted) return;
       const script = document.createElement('script');
       for (const attr of old.attributes) script.setAttribute(attr.name, attr.value);
       script.textContent = old.textContent;
-      script.dataset.vcpeExecuted = '1';
+      script.dataset.mweExecuted = '1';
       old.replaceWith(script);
     });
   }
@@ -425,23 +426,23 @@
     try {
       data = await apiPost(params);
     } catch (e) {
-      if (seq === previewSeq) bar().querySelector('.vcpe-status').textContent = '预览失败：' + e.message;
+      if (seq === previewSeq) bar().querySelector('.mwe-status').textContent = '预览失败：' + e.message;
       return;
     }
     if (seq !== previewSeq) return;
     if (data.error) {
-      bar().querySelector('.vcpe-status').textContent = '预览失败：' + data.error.info;
+      bar().querySelector('.mwe-status').textContent = '预览失败：' + data.error.info;
       return;
     }
     const html = data.parse.text;
     if (session.section == null) {
       applyFull(html);
     } else if (!applySection(html, session.section)) {
-      bar().querySelector('.vcpe-status').textContent =
+      bar().querySelector('.mwe-status').textContent =
         '无法在页面中定位该章节，未应用预览（页面保持原样）';
       return;
     }
-    const st = bar().querySelector('.vcpe-status');
+    const st = bar().querySelector('.mwe-status');
     st.textContent = `预览已更新 ${new Date().toLocaleTimeString()}`;
     addSectionButtons();
   }
@@ -453,10 +454,10 @@
       return;
     }
     const b = bar();
-    const summary = b.querySelector('.vcpe-summary').value.trim();
-    const minor = b.querySelector('.vcpe-minor').checked;
+    const summary = b.querySelector('.mwe-summary').value.trim();
+    const minor = b.querySelector('.mwe-minor').checked;
     setBusy(true);
-    b.querySelector('.vcpe-status').textContent = '提交中…';
+    b.querySelector('.mwe-status').textContent = '提交中…';
     try {
       const tok = await apiGet({ action: 'query', meta: 'tokens', type: 'csrf' });
       const token = tok?.query?.tokens?.csrftoken;
@@ -476,7 +477,7 @@
       const r = await apiPost(params);
       if (r.error) {
         if (r.error.code === 'editconflict') {
-          b.querySelector('.vcpe-status').textContent =
+          b.querySelector('.mwe-status').textContent =
             '保存冲突：页面在你编辑期间被修改，请取消后重新编辑。';
           setBusy(false);
           return;
@@ -485,11 +486,11 @@
       }
       send({ type: 'finish', sessionId: session.id, result: 'saved', summary, minor });
       session = null;
-      document.body.classList.remove('vcpe-editing');
+      document.body.classList.remove('mwe-editing');
       b.remove();
       location.reload();
     } catch (e) {
-      b.querySelector('.vcpe-status').textContent = '提交失败：' + e.message;
+      b.querySelector('.mwe-status').textContent = '提交失败：' + e.message;
       setBusy(false);
     }
   }
@@ -522,13 +523,13 @@
       }
     }
     session = null;
-    document.body.classList.remove('vcpe-editing');
-    document.querySelector('.vcpe-bar')?.remove();
+    document.body.classList.remove('mwe-editing');
+    document.querySelector('.mwe-bar')?.remove();
   }
 
   // ---------- 启动 ----------
   function isArticleLink(a) {
-    if (a.classList.contains('vcpe-sec')) return false;
+    if (a.classList.contains('mwe-sec')) return false;
     if (a.closest('.mw-editsection')) return false;
     if (a.classList.contains('new') || a.classList.contains('external')) return false;
     const url = new URL(a.href, location.href);

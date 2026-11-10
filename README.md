@@ -4,7 +4,7 @@
 
 ## 组成
 
-- `userscript/mediawiki-vscode-editor.user.js`：Tampermonkey 脚本，运行在 vcpedia.cn 页面里
+- `userscript/mediawiki-vscode-editor.user.js`：Tampermonkey 脚本，运行在任意 MediaWiki 站点页面里
 - 本 VSCode 扩展：本地 WebSocket 服务（默认 `127.0.0.1:8927`），把页面源码落到临时文件，保存时把内容推回浏览器。
 
 内容方向：
@@ -20,7 +20,7 @@ VSCode --保存--> 浏览器（action=parse 渲染预览）
 1. VSCode 扩展：
 
    ```sh
-   codium --install-extension dist/mediawiki-vscode-editor-0.4.1.vsix
+   codium --install-extension dist/mediawiki-vscode-editor-0.5.0.vsix
    # 或 code --install-extension ...
 
    ```
@@ -29,18 +29,18 @@ VSCode --保存--> 浏览器（action=parse 渲染预览）
 
 2. 浏览器端二选一：
 
-   - Tampermonkey：新建脚本，粘贴 `userscript/mediawiki-vscode-editor.user.js` 的内容。更新时打开同一条目，全选删除后粘贴新文件再保存。装好后控制台应出现 `[mediawiki-vscode] userscript 0.3.3 loaded`。
-   - 或直接放进个人 JS：打开 `https://vcpedia.cn/User:<你的用户名>/common.js`（红链就创建），粘贴同一份内容并保存，然后 `?action=purge` 或 Ctrl+F5 刷新。个人 JS 只在你登录时加载，效果与 Tampermonkey 相同。
+   - Tampermonkey：新建脚本，粘贴 `userscript/mediawiki-vscode-editor.user.js` 的内容。脚本匹配所有站点，但只会对检测到 MediaWiki `mw.config` 的页面生效。更新时打开同一条目，全选删除后粘贴新文件再保存。装好后控制台应出现 `[mediawiki-vscode] userscript 0.4.0 loaded`。
+   - 或直接放进个人 JS：打开 `https://<你的 wiki>/User:<你的用户名>/common.js`（红链就创建），粘贴同一份内容并保存，然后 `?action=purge` 或 Ctrl+F5 刷新。个人 JS 只在你登录时加载，效果与 Tampermonkey 相同。
 
    不要放进 `MediaWiki:Common.js`：那需要 `editinterface` 权限，且会让所有访客都去连本机端口。
 
-3. 打开 vcpedia.cn 并登录。页面右下角出现「VSCode 编辑」，标题旁的 `[编辑]` 后面出现 `VSCode` 链接。
+3. 打开你的 MediaWiki 站点并登录。页面右下角出现「VSCode 编辑」，标题旁的 `[编辑]` 后面出现 `VSCode` 链接。
 
 ## 使用
 
 - 整页编辑：点右下角按钮，或按 `Alt+E`。
 - 章节编辑：点该节 `[编辑]` 后面的 `VSCode`。
-- VSCode 打开临时文件（默认 `$XDG_CACHE_HOME/mediawiki-edit/<站点主机>/<页面名>[.s<节号>].<时间戳>.wiki`，即 `~/.cache/mediawiki-edit/vcpedia.cn/…`），改完 `Ctrl+S`。
+- VSCode 打开临时文件（默认 `$XDG_CACHE_HOME/mediawiki-edit/<站点主机>/<页面名>[.s<节号>].<时间戳>.wiki`，即 `~/.cache/mediawiki-edit/<站点主机>/…`），改完 `Ctrl+S`。
 - 浏览器正文即时变成预览，底部浮条可填编辑摘要、标记小编辑。
 - 点「保存更改」提交；「取消」恢复原页面并丢弃本次会话。
 - 提交冲突（别人先改了）时会提示，取消后重新发起编辑。
@@ -63,16 +63,16 @@ VSCode 设置：
 - `mediawikiEditor.diagnosticsWarnings`：诊断是否包含警告，默认关闭（只报错误）。
 - `mediawikiEditor.diagnosticsDelay`：停止输入后多久执行诊断，默认 400ms。
 - `mediawikiEditor.diagnosticsMaxLength`：超过该字符数不自动诊断、不生成语义高亮，默认 100000；设为 0 不限制。
-- `mediawikiEditor.parserConfig`：内置 VCPedia/未注册文档的解析配置路径；自定义 wiki 使用添加时生成的独立配置。
+- `mediawikiEditor.parserConfig`：未注册文档或内置默认配置的覆盖路径；已注册 wiki 使用添加时生成的独立配置。
 
 修改端口时同步改用户脚本顶部的 `WS_URL`。
 
 ## 多 wiki
 
-扩展内置 VCPedia；其他站点从命令面板添加：
+所有站点都从命令面板添加：
 
 - `MediaWiki: 添加 wiki`：先在目标 wiki 打开任意页面并保持 InPageEdit 插件连接；输入名称和站点地址后，扩展通过该浏览器页面读取 `siteinfo`（携带登录态），自动探测 API 路径、生成解析配置并注册。
-- `MediaWiki: 列出已添加的 wiki`、`MediaWiki: 删除 wiki`：管理自定义条目；内置 VCPedia 不可删除。
+- `MediaWiki: 列出已添加的 wiki`、`MediaWiki: 删除 wiki`：管理已添加的站点。
 
 解析配置存放在扩展的 global storage（`wikis/<host>.json`），注册表保存在扩展 globalState。浏览器推送时优先使用消息里的站点地址；InPageEdit 插件发送 `location.origin`，缺失时回退 WebSocket `Origin` 头。未注册的站点会拒绝打开，并提示先添加 wiki。页面内容与 `siteinfo` 都由浏览器带登录态请求，扩展不自行匿名抓取页面。
 
@@ -89,10 +89,10 @@ VSCode 设置：
 - 外部链接与 wiki 内链可点击。
 - 模板、模块和内链目标支持 `跳转到定义`：浏览器打开目标页并进入 IPE 编辑态，扩展随后打开对应临时文件供编辑。目标页内容由浏览器携带登录态获取，扩展不自行匿名请求。
 
-诊断在输入后防抖执行；超大文档默认跳过自动诊断，可用 `MediaWiki: 重新检查当前文件` 手动触发。解析配置随扩展打包为 `config/vcpedia.json`，由 `scripts/build-vcpedia-config.mjs` 从站点 `siteinfo` API 生成，不执行站点脚本；需要重新生成时运行：
+诊断在输入后防抖执行；超大文档默认跳过自动诊断，可用 `MediaWiki: 重新检查当前文件` 手动触发。扩展自带通用默认解析配置 `config/default.json`；每个站点的配置由 `scripts/build-wiki-config.mjs` 从站点 `siteinfo` API 生成，不执行站点脚本。需要为某站点生成配置时运行：
 
 ```sh
-node scripts/build-vcpedia-config.mjs
+node scripts/build-wiki-config.mjs <站点地址> [输出路径]
 ```
 
 语言功能本身是单文件分析：模板/模块/内链跳转通过浏览器打开目标页完成，扩展不抓取页面；`<ref name>` 的定义跳转仍在当前文档内。引用与重命名限于当前文档，暂不提供全站反向引用索引。章节编辑的临时文件只包含该节文本，页面级规则可能不适用。
@@ -100,7 +100,7 @@ node scripts/build-vcpedia-config.mjs
 编辑器唤起协议默认 `vscodium://`。如果用的是 VS Code，在 mediawiki 页面的控制台执行一次：
 
 ```js
-localStorage.setItem('vcpe-editor-scheme', 'vscode')
+localStorage.setItem('mwe-editor-scheme', 'vscode')
 ```
 
 ## 位置同步
@@ -142,7 +142,8 @@ https://cdn.jsdelivr.net/gh/minortex/mediawiki-vscode-editor@latest/ipe-plugin/r
 
 ```sh
 # 需要浏览器开着 9222 调试端口并已登录；先停掉 VSCodium 让出 8927
-BROWSER_PORT=9222 node test/survey.mjs
+WIKI_URL=https://example.org BROWSER_PORT=9222 node test/survey.mjs
+# 若 API 不在 /api.php，可额外设置 API_URL
 ```
 
 每页独立连接、结束释放标签和会话，单步超时 2 秒。
