@@ -430,7 +430,7 @@ function activate(context) {
 
   context.subscriptions.push(
     statusBar,
-    ...wikis.register(context),
+    ...wikis.register(context, () => languageFeatures?.refresh()),
     vscode.commands.registerCommand('mediawikiEditor.push', () => {
       const editor = vscode.window.activeTextEditor;
       if (!editor) {
