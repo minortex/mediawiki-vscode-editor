@@ -557,6 +557,7 @@ function registerLanguageFeatures(context: any, options: any = {}) {
       return runDiagnostics(document);
     },
     refresh: resetServices,
+    ast: (document) => astFor(document),
   };
 }
 

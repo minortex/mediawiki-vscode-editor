@@ -17,10 +17,12 @@ function simplify(text) {
   return converter ? converter(text) : text;
 }
 
-function extractItems(text: string): any[] {
+function extractItems(text: string, root?: any): any[] {
   if (text.length > 300000) return [];
-  wikiParser ||= require('wikiparser-node');
-  const root = wikiParser.parse(text);
+  if (!root) {
+    wikiParser ||= require('wikiparser-node');
+    root = wikiParser.parse(text);
+  }
   const items: any[] = [];
   let poemCount = 0;
   const add = (value: any, start: any, scope: any, label: any) => {
@@ -83,12 +85,12 @@ function extractItems(text: string): any[] {
   return items;
 }
 
-function itemsFor(doc: any): any[] {
+function itemsFor(doc: any, root?: any): any[] {
   const cached = itemCache.get(doc.uri.fsPath);
   if (cached && cached.version === doc.version) return cached.items;
   let items: any[] = [];
   try {
-    items = extractItems(doc.getText());
+    items = extractItems(doc.getText(), root);
   } catch {
     items = [];
   }
@@ -116,10 +118,10 @@ function occurrenceOf(items, index) {
   return count;
 }
 
-function findLineByText(doc, text) {
+function findLineByText(doc: any, text: string, root?: any): number {
   const needle = simplify(String(text || '').trim());
   if (!needle) return -1;
-  const items = itemsFor(doc);
+  const items = itemsFor(doc, root);
   const hit = items.find((it) => it.text.includes(needle) || needle.includes(it.text));
   if (hit) return doc.positionAt(hit.start).line;
   for (let i = 0; i < doc.lineCount; i++) {

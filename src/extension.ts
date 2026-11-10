@@ -126,7 +126,7 @@ async function locateInEditor(msg) {
   if (!meta) return;
   const doc = vscode.workspace.textDocuments.find((d) => d.uri.fsPath === meta.fsPath);
   if (!doc) return;
-  const line = itemsUtil.findLineByText(doc, msg.text);
+  const line = itemsUtil.findLineByText(doc, msg.text, languageFeatures?.ast?.(doc));
   if (line < 0) return;
   const editor = await vscode.window.showTextDocument(doc, { preview: false });
   revealLine(editor, line);
@@ -326,7 +326,10 @@ function activate(context) {
         setTimeout(() => {
           syncTimers.delete(sessionId);
           const doc = event.textEditor.document;
-          const items = itemsUtil.itemsFor(doc);
+          const items = itemsUtil.itemsFor(
+            doc,
+            doc.getText().length <= 300000 ? languageFeatures?.ast?.(doc) : undefined
+          );
           const offset = doc.offsetAt(
             event.selections[0]?.active || new vscode.Position(line, 0)
           );

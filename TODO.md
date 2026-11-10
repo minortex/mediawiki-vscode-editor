@@ -31,7 +31,7 @@
 
 ## P3 其他
 
-- [ ] 统一定位与语言服务的 AST 解析，避免同一文档重复 parse。
+- [x] 统一定位与语言服务的 AST 解析：`items` 复用 `languageFeatures.ast(document)` 的缓存。
 - [ ] 更新 README、版本说明和发布流程。
 - [ ] 收紧 TypeScript：逐步开启 `noImplicitAny`，补全遗留模块参数类型。
 
