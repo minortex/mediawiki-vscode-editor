@@ -7,13 +7,14 @@
     {
       "id": "mediawiki-vscode-ipe",
       "name": "MediaWiki VSCode Editor",
-      "version": "0.8.0",
+      "version": "0.9.0",
       "description": "Edit MediaWiki pages in VSCode with live preview and InPageEdit save.",
       "author": "minortex",
-      "license": "MIT",
+      "license": "GPL-3.0-or-later",
       "loader": {
-        "kind": "autoload",
-        "entry": "loader.js"
+        "kind": "module",
+        "entry": "dist/index.CxKWGT2e.mjs",
+        "main_export": "default"
       }
     }
   ],

@@ -27,7 +27,7 @@
 - [x] 迁 `wiki`（`src/wiki-config.ts`、`src/wikis.ts`）。
 - [x] 再迁 `extension`、`language`、`items`、`session-controller`。
 - [x] 保持 `node_modules` 外部依赖，不对 `wikiparser-node` 做单文件打包。
-- [x] 浏览器端 IPE 插件继续使用 JavaScript。
+- [x] 浏览器端 IPE 插件迁移到 TypeScript + Vite ES module。
 
 ## P3 其他
 

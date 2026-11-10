@@ -4,7 +4,7 @@
 
 ## 组成
 
-- `ipe-plugin/mediawiki-vscode-ipe.js`：InPageEdit NEXT 插件，运行在任意 MediaWiki 站点页面里
+- `ipe-plugin/src/index.ts`：InPageEdit NEXT 插件（TypeScript/Vite module），运行在任意 MediaWiki 站点页面里
 - 本 VSCode 扩展：本地 WebSocket 服务（默认 `127.0.0.1:8927`），把页面源码落到临时文件，保存时把内容推回浏览器。
 
 内容方向：
@@ -20,19 +20,16 @@ VSCode --保存--> 浏览器（action=parse 渲染预览）
 1. VSCode 扩展：
 
    ```sh
-   codium --install-extension dist/mediawiki-vscode-editor-0.13.0.vsix
+   codium --install-extension dist/mediawiki-vscode-editor-0.16.1.vsix
    # 或 code --install-extension ...
 
    ```
 
    或在扩展目录按 F5 调试。
 
-2. 浏览器端安装 IPE 插件，二选一：
+2. 浏览器端在 InPageEdit 设置 → 插件商店添加注册表：`https://cdn.jsdelivr.net/gh/minortex/mediawiki-vscode-editor@latest/ipe-plugin/registry.json`，然后安装并启用。
 
-   - 在 InPageEdit 设置 → 插件商店添加注册表：`https://cdn.jsdelivr.net/gh/minortex/mediawiki-vscode-editor@latest/ipe-plugin/registry.json`，然后安装并启用。
-   - 或把 `ipe-plugin/mediawiki-vscode-ipe.js` 放进个人 JS / Tampermonkey（需在 InPageEdit 之后加载）。
-
-   不要放进 `MediaWiki:Common.js`：那需要 `editinterface` 权限，且会让所有访客都去连本机端口。
+   插件以 ES module 形式加载。不要放进 `MediaWiki:Common.js`：那需要 `editinterface` 权限，且会让所有访客都去连本机端口。
 
 3. 打开你的 MediaWiki 站点并登录。页面右下角出现「VSCode 编辑」，标题旁的 `[编辑]` 后面出现 `VSCode` 链接。
 
@@ -116,9 +113,8 @@ node scripts/build-wiki-config.mjs <站点地址> [输出路径]
 
 ## InPageEdit 插件
 
-`ipe-plugin/mediawiki-vscode-ipe.js` 是 InPageEdit NEXT 插件版本，用来替代自写的前端入口：
+`ipe-plugin/` 是 InPageEdit NEXT 插件包，入口是 `src/index.ts`，构建产物是 `dist/index.<hash>.mjs`。插件商店通过 `registry.json` 的 `module` loader 直接导入默认导出的 plugin 对象：
 
-- 在个人 JS 里加载（InPageEdit 之后），或控制台注入文件内容；
 - 点 IPE 的编辑入口 → 关闭 IPE 弹窗 → 在 VSCode 里打开源码；
 - VSCode 内容变化 → 插件调用 `action=parse` 替换正文，保留页面内预览和光标定位；
 - VSCode 里执行 `MediaWiki: 通过 InPageEdit 保存当前文件` → 插件调用 `wikiPage.edit()`，复用 IPE 的 token、`basetimestamp`、冲突处理和 watchlist。
@@ -147,4 +143,12 @@ WIKI_URL=https://example.org BROWSER_PORT=9222 node test/survey.mjs
 
 ## 开发
 
-修改 TypeScript 后运行 `npm run compile`；打包 VSIX 时 `vscode:prepublish` 会自动编译到 `out/`。
+扩展端修改 TypeScript 后运行 `npm run compile`；打包 VSIX 时 `vscode:prepublish` 会自动编译到 `out/`。
+
+浏览器端 InPageEdit 插件修改 `ipe-plugin/src/index.ts` 后运行：
+
+```sh
+npm run build:ipe
+```
+
+该命令会类型检查、用 Vite 生成带内容哈希的 `ipe-plugin/dist/index.<hash>.mjs`，并同步更新 `ipe-plugin/package.json` 与 `ipe-plugin/registry.json` 的 `module` 入口。构建产物需要提交，因为插件商店和 GitHub Pages 直接加载它。
