@@ -941,24 +941,46 @@ export default {
       const params = Object.values(target.params)
         .map(compactText)
         .filter(value => value.length >= 2)
-      const scored: Array<{element: Element; score: number}> = []
+      const scored: Array<{
+        element: Element
+        score: number
+        titleMatch: boolean
+        textMatch: boolean
+        navbox: boolean
+      }> = []
+      const titleMatches: typeof scored = []
+      const textMatches: typeof scored = []
       for (const element of root.querySelectorAll(selector)) {
         if (range && !range.intersectsNode(element)) continue
         const text = compactText(element.textContent || '')
         if (!text) continue
         const title = blockTitle(element)
+        const titleMatch = Boolean(name && title.includes(name))
+        const textMatch = Boolean(name && text.includes(name))
         let score = 0
-        if (name && title.includes(name)) score += 200
-        else if (name && text.includes(name)) score += 80
+        if (titleMatch) score += 200
+        else if (textMatch) score += 80
         const matchedParams = params.filter(value => text.includes(value)).length
-        score += Math.min(4, matchedParams) * 10
-        if (element.matches('table.navbox, .navbox')) score += 20
+        score += Math.min(8, matchedParams) * 10
+        const navbox = element.matches('table.navbox, .navbox')
+        if (navbox) score += 20
         if (element.matches('.infobox, .infoBox')) score += 15
         if (text.length > 100) score += 5
-        if (score >= 60) scored.push({element, score})
+        if (score >= 60) {
+          const candidate = {element, score, titleMatch, textMatch, navbox}
+          scored.push(candidate)
+          if (titleMatch) titleMatches.push(candidate)
+          if (textMatch) textMatches.push(candidate)
+        }
       }
-      scored.sort((a, b) => b.score - a.score)
-      const chosen = scored[Math.min(target.occurrence - 1, scored.length - 1)]?.element
+      // 模板名出现在多个块时，标题匹配才是真正的模板块；
+      // 只有标题缺失时才退回正文匹配，避免参数值命中无关的导航盒。
+      let pool = titleMatches.length ? titleMatches : textMatches
+      if (!pool.length) {
+        pool = scored.filter(item => !item.navbox)
+      }
+      pool.sort((a, b) => b.score - a.score)
+      const chosen = pool[Math.min(target.occurrence - 1, pool.length - 1)]?.element
       if (!chosen) return highlightSection(target.section)
       if (chosen instanceof HTMLElement) {
         revealHidden(chosen)
