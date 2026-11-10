@@ -33,7 +33,8 @@
 
 - [x] 统一定位与语言服务的 AST 解析：`items` 复用 `languageFeatures.ast(document)` 的缓存。
 - [ ] 更新 README、版本说明和发布流程。
-- [ ] 收紧 TypeScript：逐步开启 `noImplicitAny`，补全遗留模块参数类型。
+- [x] 新增 `tsconfig.strict.json` 和 `npm run typecheck:strict`，已对 protocol、session-store、session-manager、browser-bridge、items、language/config、convert、definition、semantic 开启 `noImplicitAny`。
+- [ ] 逐步把 `wiki-config`、`wikis`、`session-controller`、`extension`、`language` 纳入 strict 检查。
 
 ## 已实现，不再跟踪
 

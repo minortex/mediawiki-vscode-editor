@@ -5,15 +5,15 @@ const path = require('path');
 const fs = require('fs');
 const {defaultConfigPath} = require('../wiki-config');
 
-function setting(key, fallback) {
+function setting(key: string, fallback: any): any {
   const value = vscode.workspace.getConfiguration('mediawikiEditor').get(key);
   return value === undefined ? fallback : value;
 }
 
-function createConfigLoader(extensionPath) {
+function createConfigLoader(extensionPath: string) {
   const cache = new Map();
 
-  function resolvePath(wiki) {
+  function resolvePath(wiki: any): string {
     if (wiki?.configPath) return wiki.configPath;
     const configured = String(setting('parserConfig', '') || '').trim();
     if (!configured) return defaultConfigPath();
@@ -22,7 +22,7 @@ function createConfigLoader(extensionPath) {
     return path.resolve(folder, configured);
   }
 
-  function load(wiki) {
+  function load(wiki: any): any {
     const file = resolvePath(wiki);
     if (cache.has(file)) return cache.get(file);
     let raw;

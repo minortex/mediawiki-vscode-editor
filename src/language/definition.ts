@@ -2,12 +2,12 @@
 
 const Parser = require('wikiparser-node');
 
-function deepestToken(document, offset, root) {
+function deepestToken(document: any, offset: number, root: any): any {
   if (!root) return undefined;
   const position = document.positionAt(offset);
   let node = root.elementFromPoint(position.character, position.line);
   while (node?.childNodes?.length) {
-    const child = node.childNodes.find((candidate) => {
+    const child = node.childNodes.find((candidate: any) => {
       const start = candidate.getAbsoluteIndex();
       return start <= offset && offset < start + candidate.toString().length;
     });
@@ -18,17 +18,17 @@ function deepestToken(document, offset, root) {
   return node;
 }
 
-function descendant(node, type) {
+function descendant(node: any, type: string): any {
   if (!node) return undefined;
   if (node.type === type) return node;
   for (const child of node.childNodes || []) {
-    const found = descendant(child, type);
+    const found: any = descendant(child, type);
     if (found) return found;
   }
   return undefined;
 }
 
-function findDefinitionTarget({document, position, root, config, pageTitle}) {
+function findDefinitionTarget({document, position, root, config, pageTitle}: any): any {
   const offset = typeof document.offsetAt === 'function'
     ? document.offsetAt(position)
     : (() => {

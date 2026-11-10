@@ -24,10 +24,10 @@ const SEMANTIC_TYPES = {
   'table-syntax': 'operator',
 };
 
-function buildSemanticTokens(document, root) {
+function buildSemanticTokens(document: any, root: any): any {
   const builder = new vscode.SemanticTokensBuilder(SEMANTIC_LEGEND);
-  const walk = (node) => {
-    const type = SEMANTIC_TYPES[node.type];
+  const walk = (node: any) => {
+    const type = (SEMANTIC_TYPES as Record<string, string>)[node.type];
     if (type) {
       const text = node.toString();
       const start = document.positionAt(node.getAbsoluteIndex());

@@ -4,7 +4,7 @@ let wikiParser: any = null;
 let toSimplified: ((text: string) => string) | null = null;
 const itemCache = new Map<string, {version: number; items: any[]}>();
 
-function simplify(text) {
+function simplify(text: string): string {
   if (!toSimplified) {
     try {
       const OpenCC = require('opencc-js');
@@ -98,7 +98,7 @@ function itemsFor(doc: any, root?: any): any[] {
   return items;
 }
 
-function itemAt(items, offset) {
+function itemAt(items: any[], offset: number): number {
   let best = -1;
   for (let i = 0; i < items.length; i++) {
     if (items[i].start <= offset) best = i;
@@ -107,9 +107,9 @@ function itemAt(items, offset) {
   return best;
 }
 
-function occurrenceOf(items, index) {
+function occurrenceOf(items: any[], index: number): number {
   const target = items[index];
-  const keyOf = (item) => item.scope ? `${item.scope.type}:${item.scope.index}` : '';
+  const keyOf = (item: any) => item.scope ? `${item.scope.type}:${item.scope.index}` : '';
   const key = keyOf(target);
   let count = 0;
   for (let i = 0; i <= index; i++) {

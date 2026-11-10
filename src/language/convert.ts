@@ -3,15 +3,15 @@
 const vscode = require('vscode');
 const DIAGNOSTIC_SOURCE = 'WikiLint';
 
-function toRange(range) {
+function toRange(range: any): any {
   return new vscode.Range(range.start.line, range.start.character, range.end.line, range.end.character);
 }
 
-function toPosition(position) {
+function toPosition(position: any): {line: number; character: number} {
   return {line: position.line, character: position.character};
 }
 
-function offsetAt(document, position) {
+function offsetAt(document: any, position: any): number {
   if (typeof document.offsetAt === 'function') return document.offsetAt(position);
   const lines = document.getText().split('\n');
   let offset = 0;
@@ -19,14 +19,14 @@ function offsetAt(document, position) {
   return offset + position.character;
 }
 
-function toLspRange(range) {
+function toLspRange(range: any): any {
   return {
     start: {line: range.start.line, character: range.start.character},
     end: {line: range.end.line, character: range.end.character},
   };
 }
 
-function toDiagnostic(diagnostic) {
+function toDiagnostic(diagnostic: any): any {
   const result = new vscode.Diagnostic(
     toRange(diagnostic.range),
     diagnostic.message,
@@ -38,7 +38,7 @@ function toDiagnostic(diagnostic) {
   return result;
 }
 
-function toLspDiagnostic(diagnostic) {
+function toLspDiagnostic(diagnostic: any): any {
   return {
     range: toLspRange(diagnostic.range),
     message: diagnostic.message,
@@ -49,18 +49,18 @@ function toLspDiagnostic(diagnostic) {
   };
 }
 
-function toCompletionItemKind(kind) {
+function toCompletionItemKind(kind: any): number {
   if (typeof kind === 'number') return Math.max(0, kind - 1);
   return vscode.CompletionItemKind[kind] ?? vscode.CompletionItemKind.Text;
 }
 
-function toMarkdown(value) {
+function toMarkdown(value: any): any {
   if (typeof value === 'string') return new vscode.MarkdownString(value);
   if (value && value.kind === 'markdown') return new vscode.MarkdownString(value.value);
   return new vscode.MarkdownString(value?.value ?? '');
 }
 
-function toHoverContents(contents) {
+function toHoverContents(contents: any): any[] {
   if (!contents) return [];
   if (typeof contents === 'string') return [contents];
   if (Array.isArray(contents)) return contents.map(toHoverContents).flat();
@@ -71,7 +71,7 @@ function toHoverContents(contents) {
   return [toMarkdown(contents)];
 }
 
-function toWorkspaceEdit(edit, document) {
+function toWorkspaceEdit(edit: any, document: any): any {
   const result = new vscode.WorkspaceEdit();
   if (!edit) return undefined;
   const changes: Record<string, any[]> = edit.changes || {};
