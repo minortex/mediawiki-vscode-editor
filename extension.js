@@ -18,9 +18,6 @@ const byPath = new Map(); // fsPath -> sessionId
 const wsSessions = new Map(); // ws -> Set<sessionId>
 const dirtyTimers = new Map(); // fsPath -> timeout
 const syncTimers = new Map(); // sessionId -> timeout
-const browserClients = new Set();
-const browserRequests = new Map(); // requestId -> { resolve, reject, timer }
-let browserRequestSeq = 0;
 
 // 只有这些结果代表用户在页面上明确确认过，才允许删除临时文件
 const DELETE_RESULTS = new Set(['saved', 'unchanged', 'discarded']);
@@ -377,50 +374,42 @@ function sameOrigin(a, b) {
   }
 }
 
-function requestBrowserSiteInfo(address) {
-  const origin = normalizeOrigin(address);
-  const client = [...browserClients].find(
-    (ws) => ws.readyState === 1 && ws.origin && sameOrigin(ws.origin, origin)
-  );
-  if (!client) {
-    return Promise.reject(
-      new Error('请先在目标 wiki 打开任意页面并保持 InPageEdit 插件连接，再添加 wiki')
-    );
-  }
-  const requestId = `siteinfo-${++browserRequestSeq}`;
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      browserRequests.delete(requestId);
-      reject(new Error('浏览器读取站点信息超时'));
-    }, 20000);
-    browserRequests.set(requestId, { resolve, reject, timer });
+async function handleRegisterWiki(msg, ws, context) {
+  const requestId = msg.requestId;
+  const reply = (payload) => {
     try {
-      client.send(JSON.stringify({ type: 'fetch-siteinfo', requestId, origin }));
-    } catch (error) {
-      clearTimeout(timer);
-      browserRequests.delete(requestId);
-      reject(error);
+      ws.send(JSON.stringify({type: 'wiki-registered', requestId, ...payload}));
+    } catch {}
+  };
+  try {
+    if (!requestId) throw new Error('缺少 requestId');
+    if (!ws.origin || !msg.origin || !sameOrigin(msg.origin, ws.origin)) {
+      throw new Error('站点来源与浏览器连接不一致');
     }
-  });
+    const before = wikis.find(context, msg.origin);
+    const entry = await wikis.upsert(context, {
+      origin: msg.origin,
+      api: msg.api,
+      name: msg.name,
+      siteinfo: msg.siteinfo,
+    });
+    if (!before || before.siteinfoHash !== entry.siteinfoHash) {
+      languageFeatures?.refresh();
+    }
+    reply({ok: true, wiki: {id: entry.id, name: entry.name, origin: entry.origin}});
+  } catch (error) {
+    reply({ok: false, error: error.message});
+  }
 }
 
 function handleMessage(msg, ws, context) {
-  if (msg.type === 'fetch-siteinfo-result') {
-    const pending = browserRequests.get(msg.requestId);
-    if (pending) {
-      clearTimeout(pending.timer);
-      browserRequests.delete(msg.requestId);
-      if (msg.ok) {
-        pending.resolve(msg.siteinfo);
-      } else {
-        pending.reject(new Error(msg.error || '浏览器读取站点信息失败'));
-      }
-    }
+  if (msg.type === 'register-wiki') {
+    handleRegisterWiki(msg, ws, context).catch(() => {});
   } else if (msg.type === 'open') {
     const wiki = wikis.resolve(context, msg.wiki, ws.origin);
     if (!wiki) {
       vscode.window.showWarningMessage(
-        `MediaWiki: 未注册的 wiki（${msg.wiki || ws.origin || '未知来源'}）。请先运行「MediaWiki: 添加 wiki」。`
+        `MediaWiki: 未注册的 wiki（${msg.wiki || ws.origin || '未知来源'}）。请确认网页端脚本已更新并刷新页面。`
       );
       return;
     }
@@ -461,11 +450,9 @@ function activate(context) {
     onMessage: (msg, ws) => handleMessage(msg, ws, context),
     onConnection: (ws, req) => {
       ws.origin = req?.headers?.origin;
-      browserClients.add(ws);
       wsSessions.set(ws, new Set());
       ws.on('close', () => {
         const ids = wsSessions.get(ws) || new Set();
-        browserClients.delete(ws);
         wsSessions.delete(ws);
         for (const sessionId of ids) {
           finishSession({ sessionId, result: 'disconnected' }).catch(() => {});
@@ -483,7 +470,7 @@ function activate(context) {
 
   context.subscriptions.push(
     statusBar,
-    ...wikis.register(context, () => languageFeatures?.refresh(), {fetchSiteInfo: requestBrowserSiteInfo}),
+    ...wikis.register(context, () => languageFeatures?.refresh()),
     vscode.commands.registerCommand('mediawikiEditor.push', () => {
       const editor = vscode.window.activeTextEditor;
       if (!editor) {

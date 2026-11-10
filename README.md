@@ -20,7 +20,7 @@ VSCode --保存--> 浏览器（action=parse 渲染预览）
 1. VSCode 扩展：
 
    ```sh
-   codium --install-extension dist/mediawiki-vscode-editor-0.5.0.vsix
+   codium --install-extension dist/mediawiki-vscode-editor-0.6.0.vsix
    # 或 code --install-extension ...
 
    ```
@@ -29,7 +29,7 @@ VSCode --保存--> 浏览器（action=parse 渲染预览）
 
 2. 浏览器端二选一：
 
-   - Tampermonkey：新建脚本，粘贴 `userscript/mediawiki-vscode-editor.user.js` 的内容。脚本匹配所有站点，但只会对检测到 MediaWiki `mw.config` 的页面生效。更新时打开同一条目，全选删除后粘贴新文件再保存。装好后控制台应出现 `[mediawiki-vscode] userscript 0.4.0 loaded`。
+   - Tampermonkey：新建脚本，粘贴 `userscript/mediawiki-vscode-editor.user.js` 的内容。脚本匹配所有站点，但只会对检测到 MediaWiki `mw.config` 的页面生效。更新时打开同一条目，全选删除后粘贴新文件再保存。装好后控制台应出现 `[mediawiki-vscode] userscript 0.5.0 loaded`。
    - 或直接放进个人 JS：打开 `https://<你的 wiki>/User:<你的用户名>/common.js`（红链就创建），粘贴同一份内容并保存，然后 `?action=purge` 或 Ctrl+F5 刷新。个人 JS 只在你登录时加载，效果与 Tampermonkey 相同。
 
    不要放进 `MediaWiki:Common.js`：那需要 `editinterface` 权限，且会让所有访客都去连本机端口。
@@ -63,18 +63,20 @@ VSCode 设置：
 - `mediawikiEditor.diagnosticsWarnings`：诊断是否包含警告，默认关闭（只报错误）。
 - `mediawikiEditor.diagnosticsDelay`：停止输入后多久执行诊断，默认 400ms。
 - `mediawikiEditor.diagnosticsMaxLength`：超过该字符数不自动诊断、不生成语义高亮，默认 100000；设为 0 不限制。
-- `mediawikiEditor.parserConfig`：未注册文档或内置默认配置的覆盖路径；已注册 wiki 使用添加时生成的独立配置。
+- `mediawikiEditor.parserConfig`：未注册文档或内置默认配置的覆盖路径；已注册 wiki 使用网页端推送时生成的独立配置。
 
 修改端口时同步改用户脚本顶部的 `WS_URL`。
 
 ## 多 wiki
 
-所有站点都从命令面板添加：
+站点注册由网页端脚本负责，不需要在 VSCode 里手动配置：
 
-- `MediaWiki: 添加 wiki`：先在目标 wiki 打开任意页面并保持 InPageEdit 插件连接；输入名称和站点地址后，扩展通过该浏览器页面读取 `siteinfo`（携带登录态），自动探测 API 路径、生成解析配置并注册。
-- `MediaWiki: 列出已添加的 wiki`、`MediaWiki: 删除 wiki`：管理已添加的站点。
+- 网页端脚本连接扩展后，会携带浏览器登录态请求本站 `siteinfo`，通过 `register-wiki` 消息推送给扩展。
+- 扩展据此生成解析配置、写入 global storage 的 `wikis/<host>.json`，并更新 globalState 注册表。
+- 同一站点重复打开页面时不会重复写配置，除非 `siteinfo` 或 API 地址发生变化。
+- `MediaWiki: 列出已添加的 wiki`、`MediaWiki: 删除 wiki` 仅用于查看和清理。
 
-解析配置存放在扩展的 global storage（`wikis/<host>.json`），注册表保存在扩展 globalState。浏览器推送时优先使用消息里的站点地址；InPageEdit 插件发送 `location.origin`，缺失时回退 WebSocket `Origin` 头。未注册的站点会拒绝打开，并提示先添加 wiki。页面内容与 `siteinfo` 都由浏览器带登录态请求，扩展不自行匿名抓取页面。
+浏览器推送时优先使用消息里的站点地址；InPageEdit 插件发送 `location.origin`，缺失时回退 WebSocket `Origin` 头。未注册的站点通常意味着网页端脚本过旧或注册请求失败，刷新页面/更新脚本即可重新推送。若扩展未运行，点击编辑会尝试通过 URI 唤起 VSCode，并显示明确的连接提示；仍未连接时会提示检查扩展安装/启用状态和端口。页面内容与 `siteinfo` 都由浏览器带登录态请求，扩展不自行匿名抓取页面。
 
 临时文件按站点主机分目录：`<tempDir>/<host>/<页面名>[.s<节号>].<时间戳>.wiki`。旧根目录下的文件不会自动迁移。
 
@@ -134,7 +136,7 @@ https://cdn.jsdelivr.net/gh/minortex/mediawiki-vscode-editor@latest/ipe-plugin/r
 - VSCode 内容变化 → 插件调用 `action=parse` 替换正文，保留页面内预览和光标定位；
 - VSCode 里执行 `MediaWiki: 通过 InPageEdit 保存当前文件` → 插件调用 `wikiPage.edit()`，复用 IPE 的 token、`basetimestamp`、冲突处理和 watchlist。
 
-限制：章节编辑暂时只有预览提示；页面标签栏的原生“编辑”链接不经过 IPE；保存结果在页面状态条显示。插件会把当前页面 origin 作为 wiki 标识发送；换站点时先在命令面板添加对应 wiki。定义跳转和预览蓝链依赖插件识别 `external-editor=1` 参数并自动进入 IPE 编辑态。
+限制：章节编辑暂时只有预览提示；页面标签栏的原生“编辑”链接不经过 IPE；保存结果在页面状态条显示。插件会把当前页面 origin 作为 wiki 标识发送；换站点时刷新页面，网页端会自动注册该站点。定义跳转和预览蓝链依赖插件识别 `external-editor=1` 参数并自动进入 IPE 编辑态。
 
 ## 测试
 

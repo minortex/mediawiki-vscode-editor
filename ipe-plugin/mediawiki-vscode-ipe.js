@@ -8,6 +8,8 @@
 
   var WS_URL = 'ws://127.0.0.1:8927';
   var RECONNECT_MS = 5000;
+  var EDITOR_SCHEME = localStorage.getItem('mwe-editor-scheme') || 'vscodium';
+  var EDITOR_URI = EDITOR_SCHEME + '://local.mediawiki-vscode-editor/wake';
   var API = window.mw && mw.util && mw.util.wikiScript
     ? mw.util.wikiScript('api')
     : new URL('/api.php', location.origin).href;
@@ -157,23 +159,7 @@
   }
 
   // ---------- websocket ----------
-  function fetchSiteInfoForExtension(msg) {
-    var requested;
-    try {
-      requested = new URL(msg.origin).origin;
-    } catch (e) {
-      send({type: 'fetch-siteinfo-result', requestId: msg.requestId, ok: false, error: '无效的站点地址'});
-      return;
-    }
-    if (requested !== location.origin) {
-      send({
-        type: 'fetch-siteinfo-result',
-        requestId: msg.requestId,
-        ok: false,
-        error: '浏览器当前页面是 ' + location.origin + '，请先打开目标 wiki 的页面'
-      });
-      return;
-    }
+  function fetchSiteInfo() {
     var params = {
       action: 'query',
       meta: 'siteinfo',
@@ -183,7 +169,7 @@
     };
     var controller = typeof AbortController === 'function' ? new AbortController() : null;
     var timer = controller ? setTimeout(function () { controller.abort(); }, 20000) : null;
-    fetch(API + '?' + new URLSearchParams(params), {
+    return fetch(API + '?' + new URLSearchParams(params), {
       credentials: 'include',
       signal: controller ? controller.signal : undefined,
     })
@@ -194,28 +180,115 @@
       .then(function (data) {
         if (data.error) throw new Error(data.error.code + ': ' + data.error.info);
         if (!data.query || !data.query.general) throw new Error('站点没有返回 siteinfo');
-        send({
-          type: 'fetch-siteinfo-result',
-          requestId: msg.requestId,
-          ok: true,
-          siteinfo: {origin: location.origin, api: API, query: data.query},
-        });
-      })
-      .catch(function (e) {
-        send({
-          type: 'fetch-siteinfo-result',
-          requestId: msg.requestId,
-          ok: false,
-          error: (e && e.message) || String(e),
-        });
+        return data.query;
       })
       .finally(function () { if (timer) clearTimeout(timer); });
+  }
+
+  function notifyOffline(message) {
+    var old = document.getElementById('mwe-offline-notice');
+    if (old) old.remove();
+    var box = document.createElement('div');
+    box.id = 'mwe-offline-notice';
+    box.style.cssText = 'position:fixed;right:20px;bottom:84px;z-index:2147483003;max-width:360px;background:#202122;color:#fff;padding:12px 14px;border-radius:6px;font-size:13px;line-height:1.5;box-shadow:0 2px 12px rgba(0,0,0,.35);';
+    var text = document.createElement('div');
+    text.textContent = message || 'VSCode 扩展未连接。请先打开 VSCode，并确认已安装并启用 MediaWiki 扩展。';
+    var actions = document.createElement('div');
+    actions.style.cssText = 'margin-top:8px;display:flex;gap:8px;';
+    var launch = document.createElement('button');
+    launch.textContent = '启动 VSCode';
+    launch.style.cssText = 'padding:4px 10px;border:0;border-radius:4px;background:#3366cc;color:#fff;cursor:pointer;';
+    launch.addEventListener('click', function () {
+      box.remove();
+      launchEditor();
+    });
+    var close = document.createElement('button');
+    close.textContent = '关闭';
+    close.style.cssText = 'padding:4px 10px;border:1px solid #54595d;border-radius:4px;background:transparent;color:#fff;cursor:pointer;';
+    close.addEventListener('click', function () { box.remove(); });
+    actions.append(launch, close);
+    box.append(text, actions);
+    document.body.append(box);
+  }
+
+  function launchEditor() {
+    if (Date.now() - lastLaunch < 10000) return;
+    lastLaunch = Date.now();
+    var frame = document.createElement('iframe');
+    frame.style.display = 'none';
+    frame.src = EDITOR_URI;
+    document.body.append(frame);
+    setTimeout(function () { frame.remove(); }, 3000);
+  }
+
+  var registeredWiki = null;
+  var registeringWiki = null;
+  var registerSeq = 0;
+  var registerWaiters = {};
+  var pendingStart = null;
+  var lastLaunch = 0;
+
+  function ensureWikiRegistered() {
+    if (registeredWiki) return Promise.resolve(registeredWiki);
+    if (registeringWiki) return registeringWiki;
+    registeringWiki = fetchSiteInfo()
+      .then(function (query) {
+        var requestId = 'reg-' + Date.now() + '-' + (++registerSeq);
+        return new Promise(function (resolve, reject) {
+          var timer = setTimeout(function () {
+            delete registerWaiters[requestId];
+            reject(new Error('扩展未响应站点注册'));
+          }, 15000);
+          registerWaiters[requestId] = {resolve: resolve, reject: reject, timer: timer, query: query};
+          send({
+            type: 'register-wiki',
+            requestId: requestId,
+            origin: location.origin,
+            api: API,
+            name: (window.mw && mw.config && mw.config.get('wgSiteName')) || location.host,
+            siteinfo: query,
+          });
+        });
+      })
+      .then(function (query) {
+        registeredWiki = query;
+        registeringWiki = null;
+        return query;
+      })
+      .catch(function (error) {
+        registeringWiki = null;
+        throw error;
+      });
+    return registeringWiki;
+  }
+
+  function onWikiRegistered(msg) {
+    var waiter = registerWaiters[msg.requestId];
+    if (!waiter) return;
+    clearTimeout(waiter.timer);
+    delete registerWaiters[msg.requestId];
+    if (msg.ok) waiter.resolve(waiter.query);
+    else waiter.reject(new Error(msg.error || '站点注册失败'));
   }
 
   function connect() {
     if (socket && socket.readyState <= 1) return;
     socket = new WebSocket(WS_URL);
-    socket.addEventListener('open', function () { connected = true; });
+    socket.addEventListener('open', function () {
+      connected = true;
+      var notice = document.getElementById('mwe-offline-notice');
+      if (notice) notice.remove();
+      ensureWikiRegistered().catch(function (e) {
+        status('站点注册失败：' + ((e && e.message) || e), 'error');
+      });
+      if (pendingStart) {
+        var pending = pendingStart;
+        pendingStart = null;
+        startEdit(pending).catch(function (e) {
+          status('启动失败：' + ((e && e.message) || e), 'error');
+        });
+      }
+    });
     socket.addEventListener('close', function () {
       connected = false;
       setTimeout(connect, RECONNECT_MS);
@@ -224,8 +297,8 @@
     socket.addEventListener('message', function (ev) {
       var msg;
       try { msg = JSON.parse(ev.data); } catch (e) { return; }
-      if (msg.type === 'fetch-siteinfo') {
-        fetchSiteInfoForExtension(msg);
+      if (msg.type === 'wiki-registered') {
+        onWikiRegistered(msg);
         return;
       }
       if (!session || msg.sessionId !== session.id) return;
@@ -544,7 +617,17 @@
     var wikiPage = payload.wikiPage;
     if (session) return;
     if (!connected) {
-      status('VSCode 扩展未连接（端口 8927）');
+      pendingStart = payload;
+      notifyOffline();
+      launchEditor();
+      return;
+    }
+    try {
+      await ensureWikiRegistered();
+    } catch (e) {
+      var message = '站点注册失败：' + ((e && e.message) || e) + '。请更新网页端脚本并刷新页面。';
+      status(message, 'error');
+      notifyOffline(message);
       return;
     }
     var rev = wikiPage.revisions && wikiPage.revisions[0];
