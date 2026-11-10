@@ -1,11 +1,5 @@
 import type { ExtensionMessage } from './protocol';
-
-export interface SocketLike {
-  send(data: string): void;
-  on(event: string, listener: (...args: unknown[]) => void): void;
-  origin?: string;
-  readyState?: number;
-}
+import {startWsServer, type SocketLike} from './ws-server';
 
 export interface StartOptions {
   port: number;
@@ -21,16 +15,6 @@ interface PendingRequest {
   timer: NodeJS.Timeout;
 }
 
-const wsServer = require('../lib/ws-server') as {
-  startWsServer(options: {
-    port: number;
-    allowedOrigin?: string;
-    onMessage?(msg: any, ws: SocketLike): void;
-    onConnection?(ws: SocketLike, req?: unknown): void;
-    onError?(error: Error): void;
-  }): any;
-};
-
 export class BrowserBridge {
   private wss: any = null;
   private readonly pending = new Map<string, PendingRequest>();
@@ -41,7 +25,7 @@ export class BrowserBridge {
   }
 
   start(options: StartOptions): void {
-    this.wss = wsServer.startWsServer({
+    this.wss = startWsServer({
       port: options.port,
       allowedOrigin: options.allowedOrigin,
       onConnection: (ws: SocketLike, req?: unknown) => {

@@ -1,7 +1,5 @@
 /** Shared WebSocket protocol between the VSCode extension and browser scripts. */
 
-export const PROTOCOL_VERSION = 1;
-
 export type SessionState = 'attached' | 'detached' | 'draft';
 
 export interface WikiIdentity {
@@ -193,9 +191,3 @@ export type ExtensionMessage =
   | EditorClosedMessage
   | PreemptedMessage
   | ClosedMessage;
-
-export function isProtocolMessage(value: unknown): value is {type: string} {
-  return typeof value === 'object'
-    && value !== null
-    && typeof (value as {type?: unknown}).type === 'string';
-}
