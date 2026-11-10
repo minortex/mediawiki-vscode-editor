@@ -8,8 +8,6 @@
 
   var WS_URL = 'ws://127.0.0.1:8927';
   var RECONNECT_MS = 5000;
-  var EDITOR_SCHEME = localStorage.getItem('mwe-editor-scheme') || 'vscodium';
-  var EDITOR_URI = EDITOR_SCHEME + '://local.mediawiki-vscode-editor/wake';
   var API = window.mw && mw.util && mw.util.wikiScript
     ? mw.util.wikiScript('api')
     : new URL('/api.php', location.origin).href;
@@ -191,34 +189,9 @@
     var box = document.createElement('div');
     box.id = 'mwe-offline-notice';
     box.style.cssText = 'position:fixed;right:20px;bottom:84px;z-index:2147483003;max-width:360px;background:#202122;color:#fff;padding:12px 14px;border-radius:6px;font-size:13px;line-height:1.5;box-shadow:0 2px 12px rgba(0,0,0,.35);';
-    var text = document.createElement('div');
-    text.textContent = message || 'VSCode 扩展未连接。请先打开 VSCode，并确认已安装并启用 MediaWiki 扩展。';
-    var actions = document.createElement('div');
-    actions.style.cssText = 'margin-top:8px;display:flex;gap:8px;';
-    var launch = document.createElement('button');
-    launch.textContent = '启动 VSCode';
-    launch.style.cssText = 'padding:4px 10px;border:0;border-radius:4px;background:#3366cc;color:#fff;cursor:pointer;';
-    launch.addEventListener('click', function () {
-      box.remove();
-      launchEditor();
-    });
-    var close = document.createElement('button');
-    close.textContent = '关闭';
-    close.style.cssText = 'padding:4px 10px;border:1px solid #54595d;border-radius:4px;background:transparent;color:#fff;cursor:pointer;';
-    close.addEventListener('click', function () { box.remove(); });
-    actions.append(launch, close);
-    box.append(text, actions);
+    box.textContent = message || 'VSCode 扩展未连接。请手动打开 VSCode，并确认已安装并启用 MediaWiki 扩展。';
     document.body.append(box);
-  }
-
-  function launchEditor() {
-    if (Date.now() - lastLaunch < 10000) return;
-    lastLaunch = Date.now();
-    var frame = document.createElement('iframe');
-    frame.style.display = 'none';
-    frame.src = EDITOR_URI;
-    document.body.append(frame);
-    setTimeout(function () { frame.remove(); }, 3000);
+    setTimeout(function () { box.remove(); }, 8000);
   }
 
   var registeredWiki = null;
@@ -226,7 +199,6 @@
   var registerSeq = 0;
   var registerWaiters = {};
   var pendingStart = null;
-  var lastLaunch = 0;
 
   function ensureWikiRegistered() {
     if (registeredWiki) return Promise.resolve(registeredWiki);
@@ -619,7 +591,6 @@
     if (!connected) {
       pendingStart = payload;
       notifyOffline();
-      launchEditor();
       return;
     }
     try {

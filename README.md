@@ -20,7 +20,7 @@ VSCode --保存--> 浏览器（action=parse 渲染预览）
 1. VSCode 扩展：
 
    ```sh
-   codium --install-extension dist/mediawiki-vscode-editor-0.6.0.vsix
+   codium --install-extension dist/mediawiki-vscode-editor-0.6.1.vsix
    # 或 code --install-extension ...
 
    ```
@@ -29,7 +29,7 @@ VSCode --保存--> 浏览器（action=parse 渲染预览）
 
 2. 浏览器端二选一：
 
-   - Tampermonkey：新建脚本，粘贴 `userscript/mediawiki-vscode-editor.user.js` 的内容。脚本匹配所有站点，但只会对检测到 MediaWiki `mw.config` 的页面生效。更新时打开同一条目，全选删除后粘贴新文件再保存。装好后控制台应出现 `[mediawiki-vscode] userscript 0.5.0 loaded`。
+   - Tampermonkey：新建脚本，粘贴 `userscript/mediawiki-vscode-editor.user.js` 的内容。脚本匹配所有站点，但只会对检测到 MediaWiki `mw.config` 的页面生效。更新时打开同一条目，全选删除后粘贴新文件再保存。装好后控制台应出现 `[mediawiki-vscode] userscript 0.6.0 loaded`。
    - 或直接放进个人 JS：打开 `https://<你的 wiki>/User:<你的用户名>/common.js`（红链就创建），粘贴同一份内容并保存，然后 `?action=purge` 或 Ctrl+F5 刷新。个人 JS 只在你登录时加载，效果与 Tampermonkey 相同。
 
    不要放进 `MediaWiki:Common.js`：那需要 `editinterface` 权限，且会让所有访客都去连本机端口。
@@ -76,7 +76,7 @@ VSCode 设置：
 - 同一站点重复打开页面时不会重复写配置，除非 `siteinfo` 或 API 地址发生变化。
 - `MediaWiki: 列出已添加的 wiki`、`MediaWiki: 删除 wiki` 仅用于查看和清理。
 
-浏览器推送时优先使用消息里的站点地址；InPageEdit 插件发送 `location.origin`，缺失时回退 WebSocket `Origin` 头。未注册的站点通常意味着网页端脚本过旧或注册请求失败，刷新页面/更新脚本即可重新推送。若扩展未运行，点击编辑会尝试通过 URI 唤起 VSCode，并显示明确的连接提示；仍未连接时会提示检查扩展安装/启用状态和端口。页面内容与 `siteinfo` 都由浏览器带登录态请求，扩展不自行匿名抓取页面。
+浏览器推送时优先使用消息里的站点地址；InPageEdit 插件发送 `location.origin`，缺失时回退 WebSocket `Origin` 头。未注册的站点通常意味着网页端脚本过旧或注册请求失败，刷新页面/更新脚本即可重新推送。若扩展未运行，点击编辑会显示未连接提示，要求手动打开 VSCode 并确认扩展已启用；连接恢复后会自动继续待处理的编辑。页面内容与 `siteinfo` 都由浏览器带登录态请求，扩展不自行匿名抓取页面。
 
 临时文件按站点主机分目录：`<tempDir>/<host>/<页面名>[.s<节号>].<时间戳>.wiki`。旧根目录下的文件不会自动迁移。
 
@@ -98,12 +98,6 @@ node scripts/build-wiki-config.mjs <站点地址> [输出路径]
 ```
 
 语言功能本身是单文件分析：模板/模块/内链跳转通过浏览器打开目标页完成，扩展不抓取页面；`<ref name>` 的定义跳转仍在当前文档内。引用与重命名限于当前文档，暂不提供全站反向引用索引。章节编辑的临时文件只包含该节文本，页面级规则可能不适用。
-
-编辑器唤起协议默认 `vscodium://`。如果用的是 VS Code，在 mediawiki 页面的控制台执行一次：
-
-```js
-localStorage.setItem('mwe-editor-scheme', 'vscode')
-```
 
 ## 位置同步
 

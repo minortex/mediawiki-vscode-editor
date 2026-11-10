@@ -483,11 +483,6 @@ function activate(context) {
         );
       }
     }),
-    vscode.window.registerUriHandler({
-      handleUri() {
-        vscode.window.setStatusBarMessage('MediaWiki: 已就绪，等待浏览器连接…', 5000);
-      },
-    }),
     vscode.commands.registerCommand('mediawikiEditor.save', async () => {
       const editor = vscode.window.activeTextEditor;
       if (!editor) {

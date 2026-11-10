@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MediaWiki ⇄ VSCode 外部编辑器
 // @namespace    mediawiki-vscode-editor
-// @version      0.5.0
+// @version      0.6.0
 // @description  在 MediaWiki 站点发起编辑，用 VSCode 改，保存即预览，浏览器内提交
 // @match        *://*/*
 // @grant        none
@@ -13,15 +13,10 @@
   'use strict';
   if (!window.mw || !mw.config || !mw.config.get('wgPageName')) return;
 
-  console.info('[mediawiki-vscode] userscript 0.5.0 loaded');
+  console.info('[mediawiki-vscode] userscript 0.6.0 loaded');
 
   const WS_URL = 'ws://127.0.0.1:8927';
   const RECONNECT_MS = 1000;
-  // 默认 vscodium://；VS Code 可在本站控制台执行
-  // localStorage.setItem('mwe-editor-scheme', 'vscode') 切换
-  const EDITOR_SCHEME =
-    localStorage.getItem('mwe-editor-scheme') || 'vscodium';
-  const EDITOR_URI = `${EDITOR_SCHEME}://local.mediawiki-vscode-editor/wake`;
 
   // ---------- 与站点 API 交互 ----------
   const scriptPath = (window.mw && mw.config.get('wgScriptPath')) || '';
@@ -89,7 +84,6 @@
   let connected = false;
   let session = null;
   let pendingEdit = null;
-  let lastLaunch = 0;
   let registeredWiki = null;
   let registeringWiki = null;
   let registerSeq = 0;
@@ -153,17 +147,6 @@
         );
       }
     });
-  }
-
-  function launchEditor() {
-    if (Date.now() - lastLaunch < 10000) return;
-    lastLaunch = Date.now();
-    notify('正在启动 VSCode…');
-    const frame = document.createElement('iframe');
-    frame.style.display = 'none';
-    frame.src = EDITOR_URI;
-    document.body.append(frame);
-    setTimeout(() => frame.remove(), 3000);
   }
 
   function send(msg) {
@@ -310,12 +293,7 @@
     if (session) return;
     if (!connected) {
       pendingEdit = { section: section == null ? null : Number(section) };
-      launchEditor();
-      setTimeout(() => {
-        if (!connected && pendingEdit) {
-          notify('仍未检测到 VSCode 扩展。请确认 VSCode 已启动，并已安装/启用 mediawiki-vscode-editor 扩展。', 8000);
-        }
-      }, 15000);
+      notify('VSCode 扩展未连接。请手动打开 VSCode，并确认已安装/启用 mediawiki-vscode-editor 扩展。', 8000);
       return;
     }
     try {
