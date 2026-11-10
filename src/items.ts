@@ -1,8 +1,8 @@
 'use strict';
 
-let wikiParser = null;
-let toSimplified = null;
-const itemCache = new Map();
+let wikiParser: any = null;
+let toSimplified: ((text: string) => string) | null = null;
+const itemCache = new Map<string, {version: number; items: any[]}>();
 
 function simplify(text) {
   if (!toSimplified) {
@@ -13,22 +13,23 @@ function simplify(text) {
       toSimplified = (s) => s;
     }
   }
-  return toSimplified(text);
+  const converter = toSimplified;
+  return converter ? converter(text) : text;
 }
 
-function extractItems(text) {
+function extractItems(text: string): any[] {
   if (text.length > 300000) return [];
   wikiParser ||= require('wikiparser-node');
   const root = wikiParser.parse(text);
-  const items = [];
+  const items: any[] = [];
   let poemCount = 0;
-  const add = (value, start, scope, label) => {
+  const add = (value: any, start: any, scope: any, label: any) => {
     const s = simplify(String(value || '').replace(/<!--|-->/g, '').replace(/\s+/g, ' ').trim());
     if (/\.(jpe?g|png|gif|svg|webp|ogg|mp3|webm|pdf)$/i.test(s)) return;
     if (!/[\p{L}\p{N}]/u.test(s)) return;
     if (s.length >= 2 && s.length <= 60) items.push({start, text: s, scope, label: label || null});
   };
-  const walk = (node, scope, label) => {
+  const walk = (node: any, scope: any = null, label: any = null) => {
     const name = node.constructor.name;
     if (name === 'ExtToken' && String(node.name).toLowerCase() === 'poem') {
       scope = {type: 'poem', index: poemCount++};
@@ -82,10 +83,10 @@ function extractItems(text) {
   return items;
 }
 
-function itemsFor(doc) {
+function itemsFor(doc: any): any[] {
   const cached = itemCache.get(doc.uri.fsPath);
   if (cached && cached.version === doc.version) return cached.items;
-  let items = [];
+  let items: any[] = [];
   try {
     items = extractItems(doc.getText());
   } catch {

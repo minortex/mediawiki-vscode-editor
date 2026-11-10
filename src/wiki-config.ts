@@ -77,7 +77,7 @@ function buildParserConfig(query, siteOrigin) {
   const lower = (s) => s.toLowerCase();
   const uniq = (items) => [...new Set(items)];
 
-  const nsPairs = Object.entries(namespaces).flatMap(([id, ns]) => {
+  const nsPairs = Object.entries(namespaces as Record<string, any>).flatMap(([id, ns]: [string, any]) => {
     const pairs = [[Number(id), ns.name]];
     if (ns.canonical && ns.canonical !== ns.name) pairs.push([Number(id), ns.canonical]);
     return pairs;

@@ -24,15 +24,16 @@
 - [x] 添加 TypeScript 工具链（`tsconfig.json`，Node16/CJS 输出到 `out/`）。
 - [x] 先迁 `protocol`、`session-store`。
 - [x] 迁 `session-manager`。
-- [ ] 迁 `wiki`。
-- [ ] 再迁 `extension`、`lib/language`。
-- [ ] 保持 `node_modules` 外部依赖，不对 `wikiparser-node` 做单文件打包。
-- [ ] 浏览器端 IPE 插件继续使用 JavaScript。
+- [x] 迁 `wiki`（`src/wiki-config.ts`、`src/wikis.ts`）。
+- [x] 再迁 `extension`、`language`、`items`、`session-controller`。
+- [x] 保持 `node_modules` 外部依赖，不对 `wikiparser-node` 做单文件打包。
+- [x] 浏览器端 IPE 插件继续使用 JavaScript。
 
 ## P3 其他
 
 - [ ] 统一定位与语言服务的 AST 解析，避免同一文档重复 parse。
 - [ ] 更新 README、版本说明和发布流程。
+- [ ] 收紧 TypeScript：逐步开启 `noImplicitAny`，补全遗留模块参数类型。
 
 ## 已实现，不再跟踪
 

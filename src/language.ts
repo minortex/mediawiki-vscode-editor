@@ -36,7 +36,7 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
-function registerLanguageFeatures(context, options = {}) {
+function registerLanguageFeatures(context: any, options: any = {}) {
   const extensionPath = context.extensionPath;
   const services = new Map(); // uri -> LanguageService
   const timers = new Map(); // uri -> timeout

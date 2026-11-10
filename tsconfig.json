@@ -10,7 +10,14 @@
     "skipLibCheck": true,
     "sourceMap": true,
     "declaration": false,
-    "types": ["node", "vscode"]
+    "types": [
+      "node",
+      "vscode"
+    ],
+    "noImplicitAny": false,
+    "useUnknownInCatchVariables": false
   },
-  "include": ["src/**/*.ts"]
+  "include": [
+    "src/**/*.ts"
+  ]
 }

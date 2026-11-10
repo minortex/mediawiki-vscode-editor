@@ -74,7 +74,7 @@ function toHoverContents(contents) {
 function toWorkspaceEdit(edit, document) {
   const result = new vscode.WorkspaceEdit();
   if (!edit) return undefined;
-  const changes = edit.changes || {};
+  const changes: Record<string, any[]> = edit.changes || {};
   for (const [uri, edits] of Object.entries(changes)) {
     const target = uri ? vscode.Uri.parse(uri) : document.uri;
     for (const change of edits) result.replace(target, toRange(change.range), change.newText);
