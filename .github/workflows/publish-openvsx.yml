@@ -9,9 +9,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: openvsx-publish
+  cancel-in-progress: false
+
 jobs:
   publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
       OVSX_PAT: ${{ secrets.OVSX_PAT }}
     steps:
@@ -20,9 +25,21 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - name: Verify tag matches package version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          node -e "
+            const pkg = require('./package.json');
+            if ('v' + pkg.version !== process.env.GITHUB_REF_NAME) {
+              console.error('tag', process.env.GITHUB_REF_NAME, '!= v' + pkg.version);
+              process.exit(1);
+            }
+          "
       - run: npm ci
+      - run: npm test
       - name: Package VSIX
         run: npm run package:vsix
+      - name: Check Open VSX token
+        run: test -n "$OVSX_PAT"
       - name: Publish to Open VSX
-        if: ${{ env.OVSX_PAT != '' }}
         run: npx --yes ovsx publish dist/mediawiki-vscode-editor-${npm_package_version}.vsix -p "$OVSX_PAT" --skip-duplicate
