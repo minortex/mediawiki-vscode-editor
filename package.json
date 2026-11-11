@@ -127,6 +127,7 @@
     "@types/node": "^26.6.6",
     "@types/vscode": "^1.85.0",
     "@types/ws": "^8.18.2",
+    "@vscode/vsce": "^4.1.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.7",
     "vscode-languageserver-types": "^3.18.5"

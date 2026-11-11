@@ -1,5 +1,52 @@
 # TODO
 
+## 补全开发进度（2026-11-11）
+
+### P0 自动闭合修复（已完成）
+
+- [x] `language-configuration.json`：移除单引号 `'` 与单字符 `<` 的自动闭合/包围。
+- [x] 新增 `{{{` → `}}}`、`<!--` → `-->`、`-{` → `}-` 多字符闭合。
+- [x] `npm test` 通过；无 VSCode 运行环境，敲击手感未手测。
+
+### P1 静态片段补全（已完成）
+
+- [x] `src/language/snippets.ts`：纯函数片段目录与上下文匹配。
+  - 引号：输入单个 `'` 即提供斜体/粗体/粗斜体候选；继续输入 2/3/5 个则只给对应样式
+  - 标题：1–6 级，按输入级别预选
+  - 表格：`{|` 多行骨架
+  - 标签：按站点 `config.ext` / `config.html` 生成成对标签，`<ref>` 带名引用与自闭合
+  - 重定向：识别站点 `config.redirection`
+  - 签名：`~~~` → `~~~~` / `~~~~~`
+  - 注释、语言变体、分隔线
+  - 内链/模板/参数/注释 opener 仅在缺少自动闭合 closer 时提供
+- [x] `src/language/features.ts`：注册独立 `CompletionItemProvider`。
+  - 触发字符：`'`、`<`、`~`、`-`，沿用 `#`、`{`、`[`、`=`
+  - 精确替换 range、`filterText`、`sortText`、去重、`preselect`、多行 `keepWhitespace`
+  - AST 抑制：`nowiki`、`pre`、`source`、`syntaxhighlight`、`math`、`chem`、`ce`、`score`、`graph`、`timeline`、`hiero`、`templatedata`、`imagemap`、`gallery` 等及注释；超过 `diagnosticsMaxLength` 跳过
+- [x] `test/completion-snippets.test.mjs`：表驱动覆盖主要上下文与替换范围。
+- [x] `README.md` 补充结构片段与自动闭合说明。
+- [x] `npm test`：24/24 通过。
+- [ ] 待手测：VSCode Extension Development Host 中验证弹窗、Tab 接受、片段占位符跳转与上游补全共存。
+
+### P1.5 解析函数参数骨架（未开始）
+
+- [ ] 复用签名/Config 数据，为 `{{#if:` 等解析函数生成参数骨架片段。
+
+### P2 跨 wiki 补全（未开始）
+
+- [ ] 新增 `src/language/wiki-data.ts`：API 客户端、LRU/TTL 缓存、Abort 与超时降级。
+- [ ] 接入页面/模板搜索（`opensearch`）与模板参数解析（`revisions` + `Parser.parse`）。
+- [ ] 补全排序与源标记（本地/站点/片段），网络失败静默降级。
+- [ ] 可选：私有 wiki 通过浏览器 WebSocket 代理 API 请求。
+
+### P3 幽灵文本（未评估）
+
+- [ ] 评估并实现引号/闭合符 `InlineCompletionItemProvider`。
+
+---
+
+以下为早期记录。
+
 ## P0 清理
 
 - [x] 删除 `userscript/`，只保留 `ipe-plugin/` 作为浏览器端实现。

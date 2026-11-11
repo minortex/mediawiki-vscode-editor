@@ -4,6 +4,7 @@ import type {Config} from 'wikiparser-node';
 import {setting, createConfigLoader} from './config';
 import {buildSemanticTokens, SEMANTIC_LEGEND} from './semantic';
 import {findDefinitionTarget} from './definition';
+import {snippetsAt} from './snippets';
 import {
   toCompletionItemKind,
   toDiagnostic,
@@ -68,6 +69,30 @@ const diagnosticDelay = (): number =>
   Math.max(0, Number(setting('diagnosticsDelay', 400)) || 0);
 const diagnosticMaxLength = (): number =>
   Math.max(0, Number(setting('diagnosticsMaxLength', 100000)) || 0);
+
+const SNIPPET_BLOCKED_TAGS: Record<string, true> = {
+  nowiki: true,
+  pre: true,
+  source: true,
+  syntaxhighlight: true,
+  math: true,
+  chem: true,
+  ce: true,
+  score: true,
+  graph: true,
+  timeline: true,
+  hiero: true,
+  templatedata: true,
+  imagemap: true,
+  gallery: true,
+  charinsert: true,
+  mapframe: true,
+  maplink: true,
+  phonos: true,
+  rss: true,
+  section: true,
+  quiz: true,
+};
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
@@ -228,6 +253,38 @@ export function registerLanguageFeatures(
     } catch {
       return undefined;
     }
+  }
+
+  function snippetSuppressed(
+    document: vscode.TextDocument,
+    position: vscode.Position,
+    allowComment: boolean,
+  ): boolean {
+    const maxLength = diagnosticMaxLength();
+    if (maxLength > 0 && document.getText().length > maxLength) return false;
+    let root: ParserToken | undefined;
+    try {
+      root = astFor(document);
+    } catch {
+      return false;
+    }
+    if (!root) return false;
+    try {
+      let node = root.elementFromPoint(position.character, position.line) as
+        | ParserToken
+        | undefined;
+      while (node) {
+        if (node.type === 'comment' && !allowComment) return true;
+        if (node.type === 'ext' || node.type === 'ext-inner') {
+          const name = typeof node.name === 'string' ? node.name.toLowerCase() : '';
+          if (Object.hasOwn(SNIPPET_BLOCKED_TAGS, name)) return true;
+        }
+        node = node.parentNode as ParserToken | undefined;
+      }
+    } catch {
+      return false;
+    }
+    return false;
   }
 
   async function openDefinition(wiki: WikiRecord, target: {title: string; fragment?: string}): Promise<boolean> {
@@ -598,6 +655,56 @@ export function registerLanguageFeatures(
     },
   };
 
+  const snippetProvider: vscode.CompletionItemProvider = {
+    provideCompletionItems(
+      document: vscode.TextDocument,
+      position: vscode.Position,
+    ): vscode.CompletionItem[] | undefined {
+      if (!enabled()) return undefined;
+      const service = serviceFor(document);
+      if (!service) return undefined;
+      const line = document.lineAt(position.line).text;
+      const context = snippetsAt(line, position.character, line.slice(position.character), {
+        tags: [...service.config.ext, ...service.config.html[0], ...service.config.html[1]],
+        voidTags: [...service.config.html[2], 'references'],
+        redirection: service.config.redirection,
+      });
+      if (!context || snippetSuppressed(document, position, context.id === 'comment')) {
+        return undefined;
+      }
+      const range = new vscode.Range(
+        position.line,
+        context.start,
+        position.line,
+        context.end,
+      );
+      const filterText = line.slice(context.start, context.end);
+      const seen = new Set<string>();
+      const items: vscode.CompletionItem[] = [];
+      for (const [index, item] of context.items.entries()) {
+        const key = `${item.label}\u0000${item.body}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const completion = new vscode.CompletionItem(
+          item.label,
+          vscode.CompletionItemKind.Snippet,
+        );
+        completion.detail = item.detail;
+        if (item.documentation) {
+          completion.documentation = new vscode.MarkdownString(item.documentation);
+        }
+        completion.insertText = new vscode.SnippetString(item.body);
+        completion.range = range;
+        completion.filterText = item.filterText ?? filterText;
+        completion.sortText = item.sortText ?? `0${index}`;
+        if (item.preselect) completion.preselect = true;
+        if (item.body.includes('\n')) completion.keepWhitespace = true;
+        items.push(completion);
+      }
+      return items;
+    },
+  };
+
   context.subscriptions.push(
     diagnostics,
     vscode.languages.registerFoldingRangeProvider(SELECTOR, provider),
@@ -609,6 +716,18 @@ export function registerLanguageFeatures(
       ':',
       '：',
       '|',
+      '{',
+      '[',
+      '=',
+    ),
+    vscode.languages.registerCompletionItemProvider(
+      SELECTOR,
+      snippetProvider,
+      "'",
+      '<',
+      '~',
+      '-',
+      '#',
       '{',
       '[',
       '=',
