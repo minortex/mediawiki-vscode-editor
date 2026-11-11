@@ -16,6 +16,8 @@ export interface SnippetContext {
   start: number;
   end: number;
   items: SnippetItem[];
+  /** Ask VSCode to re-query while the user keeps typing. */
+  incomplete?: boolean;
 }
 
 export interface SnippetEnvironment {
@@ -158,39 +160,68 @@ function tag(
   tags: Set<string>,
   voidTags: Set<string>,
 ): SnippetContext | undefined {
-  const match = /<([A-Za-z][\w-]*)$/u.exec(prefix);
+  const start = prefix.lastIndexOf('<');
+  if (start === -1) return undefined;
+  const match = /^<([A-Za-z][\w-]*)?$/u.exec(prefix.slice(start));
   if (!match) return undefined;
   const name = match[1];
-  const lower = name.toLowerCase();
-  if (!tags.has(lower) && !voidTags.has(lower)) return undefined;
-  const start = character - match[0].length;
-  const items: SnippetItem[] = [];
-  const pair = (body: string, label: string, detail: string, preselect = false): void => {
-    items.push({
-      label,
-      body,
-      detail,
-      filterText: match[0],
-      preselect,
-    });
-  };
-  if (lower === 'ref') {
-    pair(
-      `<ref name="\${1:名称}">\${2:内容}</ref>`,
-      '<ref name="…">…</ref>',
-      '带名称的引用',
-      true,
-    );
-    pair(`<ref name="\${1:名称}"/>`, '<ref name="…"/>', '复用已有引用');
-  } else if (lower === 'references') {
-    pair('<references/>', '<references/>', '引用列表', true);
-    pair('<references>${1:内容}</references>', '<references>…</references>', '自定义引用列表');
-  } else if (voidTags.has(lower)) {
-    pair(`<${name}/>`, `<${name}/>`, '自闭合标签', true);
-  } else {
-    pair(`<${name}>\${1:内容}</${name}>`, `<${name}>…</${name}>`, '成对标签', true);
+  const lower = (name ?? '').toLowerCase();
+  const generic = (tagName: string): SnippetItem =>
+    voidTags.has(tagName)
+      ? {
+          label: `<${tagName}/>`,
+          body: `<${tagName}/>`,
+          detail: '自闭合标签',
+          filterText: `<${tagName}`,
+        }
+      : {
+          label: `<${tagName}>…</${tagName}>`,
+          body: `<${tagName}>\${1}</${tagName}>`,
+          detail: '成对标签',
+          filterText: `<${tagName}`,
+        };
+  if (lower && (tags.has(lower) || voidTags.has(lower))) {
+    const display = name ?? lower;
+    const filterText = `<${lower}`;
+    const items: SnippetItem[] = [];
+    const pair = (body: string, label: string, detail: string, preselect = false): void => {
+      items.push({label, body, detail, filterText, preselect});
+    };
+    if (lower === 'ref') {
+      pair(
+        `<${display} name="\${1:名称}">\${2:内容}</${display}>`,
+        `<${display} name="…">…</${display}>`,
+        '带名称的引用',
+        true,
+      );
+      pair(
+        `<${display} name="\${1:名称}"/>`,
+        `<${display} name="…"/>`,
+        '复用已有引用',
+      );
+    } else if (lower === 'references') {
+      pair(`<${display}/>`, `<${display}/>`, '引用列表', true);
+      pair(
+        `<${display}>\${1:内容}</${display}>`,
+        `<${display}>…</${display}>`,
+        '自定义引用列表',
+      );
+    } else {
+      items.push({...generic(display), preselect: true});
+    }
+    return {id: 'tag', start, end: character, items};
   }
-  return {id: 'tag', start, end: character, items};
+  const names = [...new Set([...tags, ...voidTags])]
+    .filter(tagName => tagName.startsWith(lower))
+    .sort();
+  if (names.length === 0) return undefined;
+  return {
+    id: 'tag',
+    start,
+    end: character,
+    items: names.map(generic),
+    incomplete: true,
+  };
 }
 
 function opener(

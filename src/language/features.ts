@@ -670,7 +670,7 @@ export function registerLanguageFeatures(
     provideCompletionItems(
       document: vscode.TextDocument,
       position: vscode.Position,
-    ): vscode.CompletionItem[] | undefined {
+    ): vscode.CompletionItem[] | vscode.CompletionList | undefined {
       if (!enabled()) return undefined;
       const service = serviceFor(document);
       if (!service) return undefined;
@@ -712,7 +712,7 @@ export function registerLanguageFeatures(
         if (item.body.includes('\n')) completion.keepWhitespace = true;
         items.push(completion);
       }
-      return items;
+      return context.incomplete ? new vscode.CompletionList(items, true) : items;
     },
   };
 

@@ -92,6 +92,26 @@ test('redirect keywords are recognized case-insensitively', () => {
   assert.equal(match('#redir'), undefined);
 });
 
+test('bare < offers pair snippets for later filtering', () => {
+  const result = match('<');
+  assert.equal(result.id, 'tag');
+  assert.equal(result.incomplete, true);
+  const ref = result.items.find(item => item.filterText === '<ref');
+  assert.equal(ref.body, '<ref>${1}</ref>');
+  const references = result.items.find(item => item.filterText === '<references');
+  assert.equal(references.body, '<references/>');
+});
+
+test('partial tag names keep the list open for filtering', () => {
+  const result = match('<re');
+  assert.equal(result.id, 'tag');
+  assert.equal(result.incomplete, true);
+  assert.deepEqual(
+    result.items.map(item => item.filterText),
+    ['<ref', '<references'],
+  );
+});
+
 test('known tags become paired snippets', () => {
   const ref = match('<ref');
   assert.equal(ref.id, 'tag');
