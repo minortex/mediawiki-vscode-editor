@@ -142,7 +142,7 @@
     "survey:ast": "npm run compile && node scripts/survey-ast-locate.mjs",
     "package:vsix": "node -e \"require('node:fs').mkdirSync('dist',{recursive:true})\" && npm run compile && npx --yes @vscode/vsce package --out dist/mediawiki-vscode-editor-${npm_package_version}.vsix",
     "publish:ovsx": "test -n \"$OVSX_PAT\" && npm run package:vsix && npx --yes ovsx publish dist/mediawiki-vscode-editor-${npm_package_version}.vsix -p \"$OVSX_PAT\"",
-    "publish:marketplace": "test -n \"$VSCE_PAT\" && npx --yes @vscode/vsce publish --packagePath dist/mediawiki-vscode-editor-${npm_package_version}.vsix -p \"$VSCE_PAT\" --skip-duplicate"
+    "publish:marketplace": "npx --yes @vscode/vsce publish --oidc --packagePath dist/mediawiki-vscode-editor-${npm_package_version}.vsix --skip-duplicate"
   },
   "repository": {
     "type": "git",
