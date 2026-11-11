@@ -43,3 +43,7 @@ jobs:
         run: |
           version="$(node -p "require('./package.json').version")"
           npx --yes @vscode/vsce publish --oidc --packagePath "dist/mediawiki-vscode-editor-${version}.vsix" --skip-duplicate
+      - name: Publish to Open VSX
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          npx --yes ovsx publish "dist/mediawiki-vscode-editor-${version}.vsix" --trusted-publishing --skip-duplicate
