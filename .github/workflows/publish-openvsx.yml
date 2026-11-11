@@ -42,4 +42,6 @@ jobs:
       - name: Check Open VSX token
         run: test -n "$OVSX_PAT"
       - name: Publish to Open VSX
-        run: npx --yes ovsx publish dist/mediawiki-vscode-editor-${npm_package_version}.vsix -p "$OVSX_PAT" --skip-duplicate
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          npx --yes ovsx publish "dist/mediawiki-vscode-editor-${version}.vsix" -p "$OVSX_PAT" --skip-duplicate
