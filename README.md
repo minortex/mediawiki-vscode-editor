@@ -12,18 +12,21 @@
 
 1. VSCode 扩展编译安装：
 
-```sh
-npm ci && npm run compile
-npx @vscode/vsce package
-codium --install-extension dist/mediawiki-vscode-editor-*.vsix
-```
+[open-vsx.org](https://open-vsx.org/user-settings/extensions/minortex/mediawiki-vscode-editor)
 
-调试时直接在扩展目录按 F5。
+[vscode-marketplace](https://marketplace.visualstudio.com/items?itemName=minortex.mediawiki-vscode-editor)
+
+开发版可在 actions -> artifacts 获取。
 
 2. 浏览器端在 InPageEdit 设置 → 插件商店添加注册表：
 
 ```
-https://cdn.jsdelivr.net/gh/minortex/mediawiki-vscode-editor@latest/ipe-plugin/registry.json
+https://minortex.github.io/mediawiki-vscode-editor/ipe-plugin/registry.json
+```
+
+开发版：
+```
+https://minortex.github.io/mediawiki-vscode-editor/ipe-plugin/dev/registry.json
 ```
 
 安装，允许访问本地设备，如果在 VSCode 里面跳转到定义，第一次需要在浏览器允许打开页面。
