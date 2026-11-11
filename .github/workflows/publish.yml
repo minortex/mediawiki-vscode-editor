@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 concurrency:
   group: openvsx-publish
@@ -17,8 +18,8 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    environment: production
     env:
-      OVSX_PAT: ${{ secrets.OVSX_PAT }}
       VSCE_PAT: ${{ secrets.VSCE_PAT }}
     steps:
       - uses: actions/checkout@v4
@@ -40,12 +41,10 @@ jobs:
       - run: npm test
       - name: Package VSIX
         run: npm run package:vsix
-      - name: Check Open VSX token
-        run: test -n "$OVSX_PAT"
       - name: Publish to Open VSX
         run: |
           version="$(node -p "require('./package.json').version")"
-          npx --yes ovsx publish "dist/mediawiki-vscode-editor-${version}.vsix" -p "$OVSX_PAT" --skip-duplicate
+          npx --yes ovsx publish "dist/mediawiki-vscode-editor-${version}.vsix" --trusted-publishing --skip-duplicate
       - name: Publish to VS Marketplace
         if: ${{ env.VSCE_PAT != '' }}
         run: |
