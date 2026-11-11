@@ -37,6 +37,16 @@
 - [x] `test/function-snippets.test.mjs`：覆盖 `#if`、`#switch`、`#invoke`、本地别名、全角冒号、空签名与多签名。
 - [x] `npm test`：32/32 通过。
 
+### 关闭编辑会话命令（已完成）
+
+- [x] `package.json` 新增命令 `mediawikiEditor.closeSession`（「MediaWiki: 关闭当前编辑会话」）。
+- [x] 用 SHA-256 保存页面原始内容哈希，判断是否发生过实际修改；旧会话无哈希时保守询问。
+- [x] 有修改：模态询问「保存并关闭」/「放弃修改」；保存复用 `saveInPage` + `finish('saved')`，浏览器确认后清理文件并关闭页面。
+- [x] 无修改：发送 `finish('unchanged')`，关闭编辑器标签并删除临时文件。
+- [x] 浏览器端复用现有 `finish` 处理：脚本打开的标签会执行 `window.close()`，用户手动打开的标签由浏览器自行拦截。
+- [x] `onDidCloseTextDocument` 在等待确认或已请求关闭页面时不再把会话标成草稿。
+- [x] `npm test`：36/36 通过。
+
 ### P2 跨 wiki 补全（未开始）
 
 - [ ] 新增 `src/language/wiki-data.ts`：API 客户端、LRU/TTL 缓存、Abort 与超时降级。

@@ -47,6 +47,10 @@
         "title": "MediaWiki: 在浏览器中打开当前条目"
       },
       {
+        "command": "mediawikiEditor.closeSession",
+        "title": "MediaWiki: 关闭当前编辑会话"
+      },
+      {
         "command": "mediawikiEditor.restoreDraft",
         "title": "MediaWiki: 恢复编辑草稿"
       }

@@ -17,6 +17,7 @@ export interface StoredSession {
   state: SessionState;
   autoRestore: boolean;
   awaitingConfirm?: boolean;
+  originalHash?: string;
 }
 
 export class SessionStore {

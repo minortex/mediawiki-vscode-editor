@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import fs from 'node:fs';
 import path from 'node:path';
+import {createHash} from 'node:crypto';
 import type {BrowserBridge} from '../browser/bridge';
 import type {SocketLike} from '../browser/server';
 import type {SessionManager, SessionMeta} from './manager';
@@ -62,6 +63,8 @@ export interface SessionController {
   restoreDraft(): Promise<void>;
   pageUrl(wiki: WikiRecord, title: string): string | undefined;
   ensureSessionEditor(meta: SessionMeta): Promise<vscode.TextDocument | undefined>;
+  /** undefined when the original content hash is not known (old session). */
+  edited(sessionId: string, text: string): boolean | undefined;
 }
 
 function errorMessage(error: unknown): string {
@@ -150,6 +153,7 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
       created: Date.now(),
       state: 'attached',
       autoRestore: true,
+      originalHash: createHash('sha256').update(msg.text).digest('hex'),
     });
 
     const label = msg.section != null ? `${msg.title} § ${msg.section}` : msg.title;
@@ -292,11 +296,17 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
         reply({ok: true});
         return;
       }
+      const closePage = meta.closePageOnConfirm;
       clearDirty(meta.fsPath);
       sessionManager.remove(msg.sessionId);
       await closeAndDelete(meta.fsPath);
       vscode.window.setStatusBarMessage('MediaWiki: 浏览器已显示新内容，临时文件已清理', 5000);
       reply({ok: true});
+      if (closePage) {
+        try {
+          ws.send(JSON.stringify({type: 'finish', sessionId: msg.sessionId, result: 'saved'}));
+        } catch {}
+      }
     } catch (error) {
       reply({ok: false, error: errorMessage(error)});
       vscode.window.showWarningMessage(`MediaWiki: 清理临时文件失败：${errorMessage(error)}`);
@@ -552,6 +562,12 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
     vscode.window.showInformationMessage(`MediaWiki: 已恢复 ${picked.meta.title} 的草稿。`);
   }
 
+  function edited(sessionId: string, text: string): boolean | undefined {
+    const meta = sessionManager.get(sessionId);
+    if (!meta?.originalHash) return undefined;
+    return createHash('sha256').update(text).digest('hex') !== meta.originalHash;
+  }
+
   function pageUrl(wiki: WikiRecord, title: string): string | undefined {
     const encoded = encodeURIComponent(String(title).replace(/ /gu, '_'))
       .replace(/%2F/giu, '/')
@@ -581,5 +597,6 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
     restoreDraft,
     pageUrl,
     ensureSessionEditor,
+    edited,
   };
 }

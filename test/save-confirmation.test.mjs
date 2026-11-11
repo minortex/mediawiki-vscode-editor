@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import {createHash} from 'node:crypto';
 import Module, {createRequire} from 'node:module';
 
 const require = createRequire(import.meta.url);
@@ -106,6 +107,28 @@ test('saved finish keeps the temp file until the browser confirms the new page',
   assert.equal(manager.get('s1'), undefined);
   assert.deepEqual(deleted, [fsPath]);
   assert.deepEqual(messages.at(-1), {type: 'save-confirmed-result', sessionId: 's1', ok: true});
+  fs.rmSync(dir, {recursive: true, force: true});
+});
+
+test('edited compares the current text with the original page hash', () => {
+  const {dir, manager, controller} = fixture();
+  manager.get('s1').originalHash = createHash('sha256').update('old').digest('hex');
+  assert.equal(controller.edited('s1', 'old'), false);
+  assert.equal(controller.edited('s1', 'new'), true);
+  manager.get('s1').originalHash = undefined;
+  assert.equal(controller.edited('s1', 'new'), undefined);
+  fs.rmSync(dir, {recursive: true, force: true});
+});
+
+test('confirmation sends finish when the page should close', async () => {
+  const {dir, fsPath, manager, controller, ws, messages} = fixture();
+  manager.get('s1').closePageOnConfirm = true;
+  await controller.finish({sessionId: 's1', result: 'saved'});
+  await controller.confirmSaved({sessionId: 's1', origin: 'https://example.org'}, ws);
+  assert.equal(fs.existsSync(fsPath), false);
+  assert.ok(
+    messages.some(message => message.type === 'finish' && message.result === 'saved'),
+  );
   fs.rmSync(dir, {recursive: true, force: true});
 });
 

@@ -17,6 +17,9 @@ export interface SessionMeta {
   state: SessionState;
   autoRestore: boolean;
   awaitingConfirm?: boolean;
+  originalHash?: string;
+  /** Close the browser page after the save is confirmed. */
+  closePageOnConfirm?: boolean;
 }
 
 export class SessionManager {
@@ -45,6 +48,7 @@ export class SessionManager {
         state: 'draft',
         autoRestore: entry.autoRestore !== false,
         awaitingConfirm: entry.awaitingConfirm === true,
+        originalHash: entry.originalHash,
       };
       this.sessions.set(entry.sessionId, meta);
       this.byPath.set(meta.fsPath, entry.sessionId);
@@ -75,6 +79,7 @@ export class SessionManager {
       state: meta.state,
       autoRestore: meta.autoRestore,
       awaitingConfirm: meta.awaitingConfirm,
+      originalHash: meta.originalHash,
     };
   }
 

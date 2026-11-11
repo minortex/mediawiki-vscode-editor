@@ -9,7 +9,7 @@ import {templateTargetAt} from './editor/templates';
 import {registerLanguageFeatures, type LanguageFeatures} from './language/features';
 import * as wikis from './wiki/registry';
 import {SessionStore} from './sessions/store';
-import {SessionManager} from './sessions/manager';
+import {SessionManager, type SessionMeta} from './sessions/manager';
 import {createSessionController, type SessionController} from './sessions/controller';
 import type {BrowserMessage, LocateMessage} from './protocol';
 
@@ -86,15 +86,18 @@ function clearDirty(fsPath: string): void {
   dirtyTimers.delete(fsPath);
 }
 
-async function closeAndDelete(fsPath: string): Promise<void> {
-  const doc = vscode.workspace.textDocuments.find(
-    document => document.uri.fsPath === fsPath,
-  );
-  if (doc?.isDirty) {
-    try {
-      await doc.save();
-    } catch {}
-  }
+function sendFinish(
+  meta: SessionMeta,
+  sessionId: string,
+  result: 'saved' | 'discarded' | 'unchanged' | 'closed',
+): void {
+  if (!meta.ws) return;
+  try {
+    meta.ws.send(JSON.stringify({type: 'finish', sessionId, result}));
+  } catch {}
+}
+
+async function closeEditor(fsPath: string): Promise<void> {
   const tab = vscode.window.tabGroups.all
     .flatMap(group => group.tabs)
     .find(
@@ -107,6 +110,18 @@ async function closeAndDelete(fsPath: string): Promise<void> {
       await vscode.window.tabGroups.close(tab);
     } catch {}
   }
+}
+
+async function closeAndDelete(fsPath: string): Promise<void> {
+  const doc = vscode.workspace.textDocuments.find(
+    document => document.uri.fsPath === fsPath,
+  );
+  if (doc?.isDirty) {
+    try {
+      await doc.save();
+    } catch {}
+  }
+  await closeEditor(fsPath);
   try {
     await fs.promises.unlink(fsPath);
   } catch {}
@@ -292,6 +307,83 @@ function activate(context: vscode.ExtensionContext): void {
         vscode.window.showErrorMessage(`MediaWiki: 保存失败：${result.error}`);
       }
     }),
+    vscode.commands.registerCommand('mediawikiEditor.closeSession', async () => {
+      const editor = vscode.window.activeTextEditor;
+      if (!editor) {
+        vscode.window.showInformationMessage('MediaWiki: 当前没有打开的文件。');
+        return;
+      }
+      const sessionId = sessionManager?.idForPath(editor.document.uri.fsPath);
+      const meta = sessionId ? sessionManager?.get(sessionId) : undefined;
+      if (!sessionId || !meta) {
+        vscode.window.showInformationMessage('MediaWiki: 当前文件不是编辑会话。');
+        return;
+      }
+      const controller = sessionController!;
+
+      if (meta.awaitingConfirm) {
+        meta.closePageOnConfirm = true;
+        await closeEditor(meta.fsPath);
+        vscode.window.showInformationMessage(
+          'MediaWiki: 已提交，等待浏览器确认后关闭页面并清理临时文件。',
+        );
+        return;
+      }
+
+      const doc = editor.document;
+      const edited = controller.edited(sessionId, doc.getText()) ?? true;
+      if (!edited) {
+        sendFinish(meta, sessionId, 'unchanged');
+        await controller.finish({type: 'finish', sessionId, result: 'unchanged'});
+        return;
+      }
+
+      const choice = await vscode.window.showWarningMessage(
+        `MediaWiki: ${meta.title} 有未提交的修改，关闭前要保存吗？`,
+        {modal: true},
+        '保存并关闭',
+        '放弃修改',
+      );
+      if (!choice) return;
+      if (choice === '放弃修改') {
+        sendFinish(meta, sessionId, 'discarded');
+        await controller.finish({type: 'finish', sessionId, result: 'discarded'});
+        return;
+      }
+
+      const summary = await vscode.window.showInputBox({
+        prompt: '编辑摘要',
+        value: '[VSCode]',
+      });
+      if (summary === undefined) return;
+
+      if (!meta.ws) {
+        if (doc.isDirty) await doc.save();
+        sessionManager?.markDraft(sessionId);
+        await closeEditor(meta.fsPath);
+        vscode.window.showWarningMessage(
+          'MediaWiki: 浏览器未连接，已保存为草稿。',
+        );
+        return;
+      }
+
+      const result = await controller.saveInPage(
+        sessionId,
+        doc.getText(),
+        summary,
+        false,
+      );
+      if (!result.ok) {
+        vscode.window.showErrorMessage(`MediaWiki: 保存失败：${result.error}`);
+        return;
+      }
+      meta.closePageOnConfirm = true;
+      await controller.finish({type: 'finish', sessionId, result: 'saved'});
+      await closeEditor(meta.fsPath);
+      vscode.window.showInformationMessage(
+        'MediaWiki: 已提交，等待浏览器确认后关闭页面并清理临时文件。',
+      );
+    }),
     vscode.commands.registerCommand('mediawikiEditor.restoreDraft', () =>
       sessionController!.restoreDraft(),
     ),
@@ -348,7 +440,14 @@ function activate(context: vscode.ExtensionContext): void {
     vscode.workspace.onDidCloseTextDocument(doc => {
       const sessionId = sessionManager?.idForPath(doc.uri.fsPath);
       const meta = sessionId ? sessionManager?.get(sessionId) : undefined;
-      if (!meta || meta.state === 'draft') return;
+      if (
+        !meta ||
+        meta.state === 'draft' ||
+        meta.awaitingConfirm ||
+        meta.closePageOnConfirm
+      ) {
+        return;
+      }
       const timer = dirtyTimers.get(meta.fsPath);
       if (timer) clearTimeout(timer);
       dirtyTimers.delete(meta.fsPath);
