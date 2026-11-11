@@ -1,4 +1,4 @@
-name: Publish extension to Open VSX
+name: Publish extension to Open VSX and VS Marketplace
 
 on:
   push:
@@ -19,6 +19,7 @@ jobs:
     timeout-minutes: 15
     env:
       OVSX_PAT: ${{ secrets.OVSX_PAT }}
+      VSCE_PAT: ${{ secrets.VSCE_PAT }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -45,3 +46,8 @@ jobs:
         run: |
           version="$(node -p "require('./package.json').version")"
           npx --yes ovsx publish "dist/mediawiki-vscode-editor-${version}.vsix" -p "$OVSX_PAT" --skip-duplicate
+      - name: Publish to VS Marketplace
+        if: ${{ env.VSCE_PAT != '' }}
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          npx --yes @vscode/vsce publish --packagePath "dist/mediawiki-vscode-editor-${version}.vsix" -p "$VSCE_PAT" --skip-duplicate
