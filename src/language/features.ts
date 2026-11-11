@@ -5,6 +5,7 @@ import {setting, createConfigLoader} from './config';
 import {buildSemanticTokens, SEMANTIC_LEGEND} from './semantic';
 import {findDefinitionTarget} from './definition';
 import {snippetsAt} from './snippets';
+import {functionSnippet} from './function-snippets';
 import {
   toCompletionItemKind,
   toDiagnostic,
@@ -358,11 +359,14 @@ export function registerLanguageFeatures(
         document.getText(),
         toPosition(position),
       );
+      const colon = /[：]$/u.test(
+        document.lineAt(position.line).text.slice(0, position.character),
+      )
+        ? '：'
+        : ':';
       return items?.map(item => {
-        const result = new vscode.CompletionItem(
-          item.label,
-          toCompletionItemKind(item.kind),
-        );
+        const kind = toCompletionItemKind(item.kind);
+        const result = new vscode.CompletionItem(item.label, kind);
         if (item.detail) result.detail = item.detail;
         if (item.documentation) result.documentation = toMarkdown(item.documentation);
         if (item.sortText) result.sortText = item.sortText;
@@ -378,6 +382,13 @@ export function registerLanguageFeatures(
           result.insertText = new vscode.SnippetString(
             typeof result.insertText === 'string' ? result.insertText : item.label,
           );
+        }
+        if (kind === vscode.CompletionItemKind.Function) {
+          const snippet = functionSnippet(item.label, service.config, colon);
+          if (snippet) {
+            result.insertText = new vscode.SnippetString(snippet);
+            if (snippet.includes('\n')) result.keepWhitespace = true;
+          }
         }
         lspItems.set(result, {item, service});
         return result;

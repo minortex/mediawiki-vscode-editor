@@ -28,9 +28,14 @@
 - [x] `npm test`：24/24 通过。
 - [ ] 待手测：VSCode Extension Development Host 中验证弹窗、Tab 接受、片段占位符跳转与上游补全共存。
 
-### P1.5 解析函数参数骨架（未开始）
+### P1.5 解析函数参数骨架（已完成）
 
-- [ ] 复用签名/Config 数据，为 `{{#if:` 等解析函数生成参数骨架片段。
+- [x] 新增 `src/language/function-snippets.ts`：读取 `wikiparser-node/data/signatures.json`，按站点 `config.parserFunction` 解析本地别名，生成参数占位符。
+- [x] 在 `features.ts` 的补全映射中，把解析函数项的 `insertText` 替换为片段；保留原 range，不重复 `}}`。
+- [x] 多签名函数取第一组；`#switch` 生成多行分支骨架；空签名保持只补名字。
+- [x] 保留已输入的半角/全角冒号。
+- [x] `test/function-snippets.test.mjs`：覆盖 `#if`、`#switch`、`#invoke`、本地别名、全角冒号、空签名与多签名。
+- [x] `npm test`：32/32 通过。
 
 ### P2 跨 wiki 补全（未开始）
 
