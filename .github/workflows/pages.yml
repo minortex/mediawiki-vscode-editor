@@ -2,13 +2,14 @@ name: Deploy InPageEdit plugin
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
     paths:
       - 'ipe-plugin/**'
       - 'scripts/update-ipe-registry.mjs'
-      - 'package.json'
-      - 'package-lock.json'
       - '.github/workflows/pages.yml'
+    tags:
+      - 'ipe-v*'
   workflow_dispatch:
 
 permissions:
@@ -18,27 +19,74 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve stable and dev revisions
+        id: revisions
+        run: |
+          git fetch --tags --force
+          git fetch origin main
+          stable_tag="$(git tag -l 'ipe-v[0-9]*' | grep -E '^ipe-v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1 || true)"
+          if [ -z "$stable_tag" ]; then
+            stable_tag="$(git rev-parse HEAD)"
+            echo "No stable ipe-v tag found; using HEAD for the initial stable build." >&2
+          fi
+          dev_sha="$(git rev-parse --short=8 origin/main)"
+          echo "stable_ref=$stable_tag" >> "$GITHUB_OUTPUT"
+          echo "dev_sha=$dev_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Check out stable and dev trees
+        run: |
+          git worktree add --detach "$RUNNER_TEMP/ipe-stable" "${{ steps.revisions.outputs.stable_ref }}"
+          git worktree add --detach "$RUNNER_TEMP/ipe-dev" origin/main
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
-      - run: npm run build:ipe
-      - name: Prepare Pages artifact
+
+      - name: Build stable plugin
         run: |
-          mkdir -p _site/ipe-plugin
-          cp ipe-plugin/registry.json _site/ipe-plugin/registry.json
-          cp -R ipe-plugin/dist _site/ipe-plugin/dist
+          cd "$RUNNER_TEMP/ipe-stable"
+          npm ci
+          npm run build:ipe
+
+      - name: Build dev plugin
+        env:
+          DEV_SHA: ${{ steps.revisions.outputs.dev_sha }}
+        run: |
+          cd "$RUNNER_TEMP/ipe-dev"
+          npm ci
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const path = 'ipe-plugin/package.json';
+          const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
+          const base = pkg.version.split('-')[0];
+          pkg.version = `${base}-dev.${process.env.DEV_SHA}`;
+          fs.writeFileSync(path, `${JSON.stringify(pkg, null, 2)}\n`);
+          NODE
+          npm run build:ipe
+
+      - name: Assemble Pages artifact
+        run: |
+          mkdir -p _site/ipe-plugin/dev
+          cp "$RUNNER_TEMP/ipe-stable/ipe-plugin/registry.json" _site/ipe-plugin/registry.json
+          cp -R "$RUNNER_TEMP/ipe-stable/ipe-plugin/dist" _site/ipe-plugin/dist
+          cp "$RUNNER_TEMP/ipe-dev/ipe-plugin/registry.json" _site/ipe-plugin/dev/registry.json
+          cp -R "$RUNNER_TEMP/ipe-dev/ipe-plugin/dist" _site/ipe-plugin/dev/dist
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
+
   deploy:
     needs: build
     runs-on: ubuntu-latest
