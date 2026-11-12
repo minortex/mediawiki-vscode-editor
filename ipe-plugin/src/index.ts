@@ -1284,14 +1284,6 @@ export default {
     }
 
     // ---------- edit session ----------
-    function onBeforeUnload(event: BeforeUnloadEvent): string | void {
-      if (session && (session.changed || session.remoteDirty)) {
-        event.preventDefault()
-        event.returnValue = '还有未提交的修改，确定离开？'
-        return event.returnValue
-      }
-    }
-
     function restorePage(): void {
       const root = document.querySelector('#mw-content-text')
       if (root && session?.fullOriginal) {
@@ -1303,7 +1295,6 @@ export default {
     function endSession(): void {
       session = null
       clearTimeout(previewTimer)
-      window.removeEventListener('beforeunload', onBeforeUnload)
       document.querySelector('.mwe-ipe-bar')?.remove()
       document.body.classList.remove('mwe-ipe-editing')
     }
@@ -1367,7 +1358,6 @@ export default {
         busy: false,
         conflict: false,
       }
-      window.addEventListener('beforeunload', onBeforeUnload)
       showBar(null)
       document.body.classList.remove('ipe-modal-no-scroll')
       setStatus('已恢复 VSCode 编辑会话')
@@ -1418,7 +1408,6 @@ export default {
         busy: false,
         conflict: false,
       }
-      window.addEventListener('beforeunload', onBeforeUnload)
       showBar(payload.modal)
       document.body.classList.remove('ipe-modal-no-scroll')
       setStatus('VSCode 编辑中，保存文件即刷新预览')
@@ -1490,7 +1479,6 @@ export default {
         sessionId: session.id,
         result: pending ? 'discarded' : 'unchanged',
       })
-      window.removeEventListener('beforeunload', onBeforeUnload)
       restorePage()
       endSession()
     }
@@ -1602,8 +1590,7 @@ export default {
           section: session.section,
           watchlist: session.watchlist || parseWatchlist('nochange'),
         })
-        window.removeEventListener('beforeunload', onBeforeUnload)
-        session.text = text
+          session.text = text
         session.changed = false
         session.conflict = false
         storePendingConfirm(sessionId)
