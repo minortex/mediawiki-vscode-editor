@@ -435,7 +435,7 @@ export default {
         document.head.append(style)
       }
       style.textContent = [
-        '.mwe-ipe-bar{position:fixed;left:0;right:0;bottom:0;z-index:2147483001;display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:#fff;border-top:2px solid #3366cc;padding:10px 16px;box-shadow:0 -2px 12px rgba(0,0,0,.15);font-size:14px;color:#202122;}',
+        '.mwe-ipe-bar{position:fixed;left:0;right:0;bottom:0;z-index:900;display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:#fff;border-top:2px solid #3366cc;padding:10px 16px;box-shadow:0 -2px 12px rgba(0,0,0,.15);font-size:14px;color:#202122;}',
         '.mwe-ipe-bar .mwe-ipe-status{flex:1 1 180px;color:#72777d;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
         '.mwe-ipe-bar .mwe-ipe-status.error{color:#d33;}',
         '.mwe-ipe-bar .mwe-ipe-status.ok{color:#14866d;}',
@@ -605,7 +605,7 @@ export default {
       const box = document.createElement('div')
       box.id = 'mwe-offline-notice'
       box.style.cssText =
-        'position:fixed;top:20px;right:20px;z-index:2147483003;max-width:360px;background:#fff;color:#202122;border:1px solid #a2a9b1;border-left:4px solid #fc3;padding:12px 14px;border-radius:4px;font-size:13px;line-height:1.5;box-shadow:0 2px 12px rgba(0,0,0,.2);'
+        'position:fixed;top:20px;right:20px;z-index:901;max-width:360px;background:#fff;color:#202122;border:1px solid #a2a9b1;border-left:4px solid #fc3;padding:12px 14px;border-radius:4px;font-size:13px;line-height:1.5;box-shadow:0 2px 12px rgba(0,0,0,.2);'
       box.textContent = text
       document.body.append(box)
       window.setTimeout(() => box.remove(), 8000)
@@ -867,7 +867,7 @@ export default {
       const box = document.createElement('div')
       box.style.cssText =
         `position:absolute;left:${left}px;top:${top}px;width:${rect.width}px;height:${rect.height}px;` +
-        'pointer-events:none;z-index:2147482999;outline:2px solid #3366cc;' +
+        'pointer-events:none;z-index:899;outline:2px solid #3366cc;' +
         'background:rgba(51,102,204,.15);border-radius:2px;'
       document.body.append(box)
       window.setTimeout(() => box.remove(), 1600)
