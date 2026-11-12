@@ -364,6 +364,7 @@ export default {
     const sessionWaiters: Record<string, Waiter<SessionQueryResult>> = {}
     let pendingConfirm: PendingConfirm | null = null
     let pendingConfirmSent = false
+    let barResizeObserver: ResizeObserver | null = null
 
     function readPendingConfirm(): PendingConfirm | null {
       try {
@@ -444,7 +445,8 @@ export default {
         '.mwe-ipe-bar .mwe-ipe-link{color:#3366cc;font-size:13px;text-decoration:none;cursor:pointer;white-space:nowrap;}',
         '.mwe-ipe-bar .mwe-ipe-link:hover{text-decoration:underline;}',
         '.mwe-ipe-bar label{display:flex;align-items:center;gap:4px;white-space:nowrap;}',
-        'body.mwe-ipe-editing{padding-bottom:96px;}',
+        'body.mwe-ipe-editing{padding-bottom:calc(var(--mwe-ipe-bar-height, 96px) + 16px);}',
+        'body.mwe-ipe-editing #ipe-edit-toolbox{transform:translateY(calc(-1 * var(--mwe-ipe-bar-height, 96px)));}',
       ].join('\n')
       document.head.append(style)
     }
@@ -501,6 +503,10 @@ export default {
         '<button class="mwe-ipe-cancel">取消</button>'
       document.body.append(bar)
       document.body.classList.add('mwe-ipe-editing')
+      barResizeObserver?.disconnect()
+      barResizeObserver = new ResizeObserver(syncBarHeight)
+      barResizeObserver.observe(bar)
+      syncBarHeight()
       bar.querySelector('.mwe-ipe-submit')?.addEventListener('click', () => {
         requestSave(bar)
       })
@@ -1292,9 +1298,20 @@ export default {
       }
     }
 
+    function syncBarHeight(): void {
+      const bar = document.querySelector<HTMLElement>('.mwe-ipe-bar')
+      document.documentElement.style.setProperty(
+        '--mwe-ipe-bar-height',
+        `${bar?.offsetHeight ?? 0}px`,
+      )
+    }
+
     function endSession(): void {
       session = null
       clearTimeout(previewTimer)
+      barResizeObserver?.disconnect()
+      barResizeObserver = null
+      document.documentElement.style.removeProperty('--mwe-ipe-bar-height')
       document.querySelector('.mwe-ipe-bar')?.remove()
       document.body.classList.remove('mwe-ipe-editing')
     }
