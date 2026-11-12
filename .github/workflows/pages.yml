@@ -82,6 +82,13 @@ jobs:
           cp -R "$RUNNER_TEMP/ipe-stable/ipe-plugin/dist" _site/ipe-plugin/dist
           cp "$RUNNER_TEMP/ipe-dev/ipe-plugin/registry.json" _site/ipe-plugin/dev/registry.json
           cp -R "$RUNNER_TEMP/ipe-dev/ipe-plugin/dist" _site/ipe-plugin/dev/dist
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const file = '_site/ipe-plugin/dev/registry.json';
+          const registry = JSON.parse(fs.readFileSync(file, 'utf8'));
+          registry.base_url = registry.base_url.replace(/\/$/, '') + '/dev/';
+          fs.writeFileSync(file, `${JSON.stringify(registry, null, 2)}\n`);
+          NODE
 
       - uses: actions/upload-pages-artifact@v3
         with:

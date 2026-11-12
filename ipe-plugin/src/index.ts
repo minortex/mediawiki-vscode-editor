@@ -428,9 +428,12 @@ export default {
     const barStyleId = 'mwe-ipe-bar-style'
 
     function ensureBarStyle(): void {
-      if (document.getElementById(barStyleId)) return
-      const style = document.createElement('style')
-      style.id = barStyleId
+      let style = document.getElementById(barStyleId) as HTMLStyleElement | null
+      if (!style) {
+        style = document.createElement('style')
+        style.id = barStyleId
+        document.head.append(style)
+      }
       style.textContent = [
         '.mwe-ipe-bar{position:fixed;left:0;right:0;bottom:0;z-index:2147483001;display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:#fff;border-top:2px solid #3366cc;padding:10px 16px;box-shadow:0 -2px 12px rgba(0,0,0,.15);font-size:14px;color:#202122;}',
         '.mwe-ipe-bar .mwe-ipe-status{flex:1 1 180px;color:#72777d;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
@@ -448,7 +451,6 @@ export default {
         'body.mwe-ipe-editing{padding-bottom:calc(var(--mwe-ipe-bar-height, 96px) + 16px);}',
         'body.mwe-ipe-editing #ipe-edit-toolbox{transform:translateY(calc(-1 * var(--mwe-ipe-bar-height, 96px)));}',
       ].join('\n')
-      document.head.append(style)
     }
 
     function refreshBar(): void {
@@ -478,10 +480,21 @@ export default {
       el.className = 'mwe-ipe-status' + (kind ? ' ' + kind : '')
     }
 
+    function attachBarMetrics(bar: HTMLElement): void {
+      document.body.classList.add('mwe-ipe-editing')
+      barResizeObserver?.disconnect()
+      barResizeObserver = new ResizeObserver(syncBarHeight)
+      barResizeObserver.observe(bar)
+      syncBarHeight()
+    }
+
     function ensureBar(): HTMLDivElement {
       ensureBarStyle()
       let bar = document.querySelector<HTMLDivElement>('.mwe-ipe-bar')
-      if (bar) return bar
+      if (bar) {
+        attachBarMetrics(bar)
+        return bar
+      }
       bar = document.createElement('div')
       bar.className = 'mwe-ipe-bar'
       bar.innerHTML =
@@ -502,11 +515,7 @@ export default {
         '<a class="mwe-ipe-link mwe-ipe-images">使用的图片</a>' +
         '<button class="mwe-ipe-cancel">取消</button>'
       document.body.append(bar)
-      document.body.classList.add('mwe-ipe-editing')
-      barResizeObserver?.disconnect()
-      barResizeObserver = new ResizeObserver(syncBarHeight)
-      barResizeObserver.observe(bar)
-      syncBarHeight()
+      attachBarMetrics(bar)
       bar.querySelector('.mwe-ipe-submit')?.addEventListener('click', () => {
         requestSave(bar)
       })
