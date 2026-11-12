@@ -39,9 +39,7 @@ jobs:
             stable_tag="$(git rev-parse HEAD)"
             echo "No stable ipe-v tag found; using HEAD for the initial stable build." >&2
           fi
-          dev_sha="$(git rev-parse --short=8 origin/main)"
           echo "stable_ref=$stable_tag" >> "$GITHUB_OUTPUT"
-          echo "dev_sha=$dev_sha" >> "$GITHUB_OUTPUT"
 
       - name: Check out stable and dev trees
         run: |
@@ -61,18 +59,10 @@ jobs:
 
       - name: Build dev plugin
         env:
-          DEV_SHA: ${{ steps.revisions.outputs.dev_sha }}
+          IPE_DEV: '1'
         run: |
           cd "$RUNNER_TEMP/ipe-dev"
           npm ci
-          node - <<'NODE'
-          const fs = require('node:fs');
-          const path = 'ipe-plugin/package.json';
-          const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
-          const base = pkg.version.split('-')[0];
-          pkg.version = `${base}-dev.${process.env.DEV_SHA}`;
-          fs.writeFileSync(path, `${JSON.stringify(pkg, null, 2)}\n`);
-          NODE
           npm run build:ipe
 
       - name: Assemble Pages artifact

@@ -1,6 +1,5 @@
 {
   "name": "mediawiki-vscode-ipe",
-  "version": "0.9.12",
   "private": true,
   "type": "module",
   "module": "./dist/index.mjs",
@@ -10,17 +9,5 @@
   "scripts": {
     "build": "vite build",
     "typecheck": "tsc -p tsconfig.json --noEmit"
-  },
-  "$ipe": {
-    "name": "MediaWiki VSCode Editor",
-    "description": "Edit MediaWiki pages in VSCode with live preview and InPageEdit save.",
-    "categories": [
-      "editor"
-    ],
-    "loader": {
-      "kind": "module",
-      "entry": "dist/index.mjs?v=0.9.12",
-      "main_export": "default"
-    }
   }
 }
