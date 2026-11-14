@@ -16,7 +16,8 @@ export const messages: Record<string, string> = {
   'Add to watchlist': '添加到监视列表',
   'Remove from watchlist': '从监视列表移除',
   'Minor edit': '小编辑',
-  'Reload after save': '保存后刷新',
+  'More': '更多功能',
+  'Watchlist': '关注状态',
   'Submit': '提交',
   'Diff': '差异',
   'Quick upload': '快速上传',
@@ -70,9 +71,6 @@ export const messages: Record<string, string> = {
   'The page was changed by someone else.': '页面已被其他人修改。',
   'Saved; reloading and waiting for confirmation…':
     '已保存，正在刷新并等待确认…',
-  'Saved; the new content is now shown': '已保存，新内容已显示',
-  'Saved; the preview could not be refreshed, but revision {{ $1 }} is confirmed':
-    '已保存，预览刷新失败，但已确认修订版本 {{ $1 }}',
   'The save was submitted but no revision id could be confirmed; the temp file was kept':
     '提交已完成，但未能确认修订版本号；临时文件已保留',
   'Save unconfirmed: {{ $1 }}': '保存未确认：{{ $1 }}',

@@ -166,6 +166,7 @@
     "test": "npm run compile && node --test test/*.test.mjs",
     "test:e2e": "npm run compile && npm run build:ipe && node test/e2e-sandbox.mjs",
     "build:ipe": "npm run typecheck:ipe && vite build --config ipe-plugin/vite.config.ts && node scripts/update-ipe-registry.mjs",
+    "inject:ipe": "npm run build:ipe && node scripts/inject-plugin.mjs",
     "typecheck:ipe": "tsc -p ipe-plugin/tsconfig.json --noEmit",
     "clean": "node -e \"require('node:fs').rmSync('out',{recursive:true,force:true})\"",
     "survey:ast": "npm run compile && node scripts/survey-ast-locate.mjs",

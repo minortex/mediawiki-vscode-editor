@@ -368,7 +368,10 @@ async function main() {
   if (!fs.existsSync(path.join(REPO, 'out/sessions/controller.js'))) {
     throw new Error('missing build: run npm run compile');
   }
-  const pluginSource = fs.readFileSync(pluginPath, 'utf8');
+  // The bundle hardcodes the extension port; follow WS_PORT when overridden.
+  const pluginSource = fs
+    .readFileSync(pluginPath, 'utf8')
+    .replaceAll('ws://127.0.0.1:8927', `ws://127.0.0.1:${WS_PORT}`);
   const {pageUrl, target, openedTarget} = await resolveTarget(await cdpJson('/json/list'));
   const ORIGIN = new URL(pageUrl).origin;
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mwe-e2e-'));
@@ -426,12 +429,10 @@ async function main() {
     const stale = await evaluate('!!window.__plugin').catch(() => true);
     if (stale) {
       // Fresh page state: drop a stale plugin/harness instance before injecting.
-      await evaluate(`(() => {
-        sessionStorage.removeItem('mwe-ipe-pending-save-confirmation')
-        location.reload()
-        return true
-      })()`).catch(() => undefined);
+      await evaluate('location.reload(); true').catch(() => undefined);
     }
+    // A leftover confirmation would keep the injected plugin idle.
+    await evaluate("sessionStorage.removeItem('mwe-ipe-pending-save-confirmation'); true").catch(() => undefined);
     try {
       await waitFor(
         'page ready',
@@ -478,9 +479,7 @@ async function main() {
       }];
       const before = state.saveResults.length;
       const clicked = await evaluate(`(() => {
-        const reload = document.querySelector('.mwe-ipe-reload')
-        if (reload) reload.checked = false
-        const summary = document.querySelector('.mwe-ipe-summary')
+        const summary = document.querySelector('.mwe-ipe-summary-input')
         if (summary) summary.value = ${JSON.stringify(summary)}
         const submit = document.querySelector('.mwe-ipe-submit')
         if (!submit) return 'no-submit'
@@ -489,6 +488,19 @@ async function main() {
       })()`);
       if (clicked !== 'clicked') throw new Error(`submit not available: ${clicked}`);
       return waitFor(`save-result ${before}`, () => state.saveResults[before], 45000);
+    };
+    // A successful save always reloads the page; re-inject so the pending
+    // confirmation and the next phase have a live plugin instance.
+    const reinjectAfterReload = async () => {
+      await waitFor('page reload', async () => {
+        try {
+          return await evaluate('document.readyState === "complete" && !!window.mw && typeof mw.Api === "function" && !window.__plugin');
+        } catch {
+          return false;
+        }
+      }, 40000);
+      const again = await evaluate(injectionScript(pluginSource));
+      if (again?.installed !== true) throw new Error('re-injection after reload failed');
     };
     const verifyRevision = async (revid, marker) => {
       // The plugin may close a tab it opened once the save is confirmed, so
@@ -535,6 +547,7 @@ async function main() {
     const firstResult = await submitSave(first.fsPath, nextText, 'E2E atomic save check');
     if (firstResult.ok === true) ok('save-result reported success', JSON.stringify(firstResult));
     else bad('save-result reported success', JSON.stringify(firstResult));
+    if (firstResult.ok === true) await reinjectAfterReload();
 
     const confirmed = await waitFor('revid confirmation', () => state.confirmations[0], 45000);
     const revid = Number(confirmed.revid);
@@ -613,6 +626,7 @@ async function main() {
     const retry = await submitSave(failed.fsPath, failedText, 'E2E retry check');
     if (retry.ok === true) ok('retry after unconfirmed save succeeds', JSON.stringify(retry));
     else bad('retry after unconfirmed save succeeds', JSON.stringify(retry));
+    if (retry.ok === true) await reinjectAfterReload();
     const retryConfirmed = await waitFor('retry confirmation', () => state.confirmations[1], 45000);
     const retryRevid = Number(retryConfirmed.revid);
     if (Number.isInteger(retryRevid) && retryRevid > revid) {
@@ -637,6 +651,7 @@ async function main() {
     const nochangeResult = await submitSave(nochange.fsPath, nochange.original, 'E2E nochange check');
     if (nochangeResult.ok === true) ok('nochange submit is accepted', JSON.stringify(nochangeResult));
     else bad('nochange submit is accepted', JSON.stringify(nochangeResult));
+    if (nochangeResult.ok === true) await reinjectAfterReload();
     const nochangeConfirmed = await waitFor('nochange confirmation', () => state.confirmations[2], 45000);
     if (Number(nochangeConfirmed.revid) === retryRevid) {
       ok('nochange fallback reuses the latest revision id', `revid=${nochangeConfirmed.revid}`);
