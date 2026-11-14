@@ -4,6 +4,9 @@
  * Keys are the English source strings used in `index.ts`; values are the
  * Simplified Chinese translations. `{{ $1 }}`-style placeholders must match
  * the source string exactly.
+ *
+ * `index.ts` registers this table under the `vscode-editor` namespace so the
+ * shared InPageEdit i18n manager is never overwritten.
  */
 export const messages: Record<string, string> = {
   'VSCode has unsaved changes; save the file first (Ctrl+S)':

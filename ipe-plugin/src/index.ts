@@ -340,11 +340,19 @@ function parseWatchlist(value: string): WatchlistAction {
 
 export default {
   name: 'vscode-editor',
-  inject: ['toolbox', 'quickUpload', 'templatesUsed', 'quickDiff'],
+  inject: ['toolbox', 'i18n', 'quickUpload', 'templatesUsed', 'quickDiff'],
   apply(ctx: InPageEdit) {
-    const translate = ctx.i18n.manager.translate.bind(ctx.i18n.manager)
+    // IPE's i18n manager is shared with the whole app, so register our strings
+    // under a namespace: bare keys such as "Submit" would override its own.
+    const NAMESPACE = 'vscode-editor'
+    const i18n = ctx.i18n.manager
+    const translate = (message: string, ...args: string[]): string => {
+      const text = i18n.translate(`${NAMESPACE}.${message}`, ...args)
+      // Untranslated languages resolve to the namespaced key itself.
+      return text.startsWith(`${NAMESPACE}.`) ? text.slice(NAMESPACE.length + 1) : text
+    }
     for (const language of ['zh', 'zh-cn', 'zh-hans']) {
-      ctx.i18n.manager.setLanguageData(language, messages)
+      i18n.setLanguageData(language, {[NAMESPACE]: messages})
     }
     const API = apiUrl()
     const windowId = (() => {

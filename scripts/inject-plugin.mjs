@@ -202,6 +202,17 @@ async function main() {
     if (result?.installed !== true) {
       throw new Error(result?.error || 'injection failed');
     }
+    // apply() waits for the injected IPE services, so the toolbox entry can
+    // appear a moment after ipe.plugin() returns.
+    await waitFor('plugin applied', async () => {
+      try {
+        return await evaluate(
+          '!!window.ipe?.toolbox?.buttons?.some?.(entry => entry.id === "vscode-editor-page")',
+        );
+      } catch {
+        return false;
+      }
+    }, 15000);
     console.log(`plugin loaded into InPageEdit ${result.ipe} on ${target.url}`);
     console.log('the edit button is in the InPageEdit toolbox, same as a published plugin.');
     console.log(`VSCode extension expected on ws://127.0.0.1:${WS_PORT}`);
