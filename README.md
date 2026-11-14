@@ -111,6 +111,8 @@ stateDiagram-v2
 
 ## 位置同步
 
+启发式搜索，因为 Parsoid 会导致排版出错，而 DSR 不是每个 wiki 都有。
+
 - 编辑器 → 预览：AST 文本项 + section + occurrence，在预览同 section 内定位。
 - 预览 → 源码：点击处文本 + section + occurrence 反查；失败时逐行文本兜底。
 - 无文本模板：按模板名/参数/section/序号匹配展开块；失败时高亮整个 section。
