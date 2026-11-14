@@ -32,6 +32,7 @@ import type {
 const WS_URL = 'ws://127.0.0.1:8927'
 const RECONNECT_MS = 5000
 const PENDING_CONFIRM_KEY = 'mwe-ipe-pending-save-confirmation'
+const NOTICE_MS = 3000
 
 function parseWatchlist(value: string): WatchlistAction {
   switch (value) {
@@ -212,7 +213,7 @@ export default {
         notifyWarning({
           title: title || translate('VSCode not connected'),
           content: text,
-          closeAfter: {time: 8000, resetOnHover: true},
+          closeAfter: {time: NOTICE_MS, resetOnHover: true},
         })
         return
       }
@@ -224,7 +225,7 @@ export default {
         'position:fixed;top:20px;right:20px;z-index:901;max-width:360px;background:#fff;color:#202122;border:1px solid #a2a9b1;border-left:4px solid #fc3;padding:12px 14px;border-radius:4px;font-size:13px;line-height:1.5;box-shadow:0 2px 12px rgba(0,0,0,.2);'
       box.textContent = text
       document.body.append(box)
-      window.setTimeout(() => box.remove(), 8000)
+      window.setTimeout(() => box.remove(), NOTICE_MS)
     }
 
     function showOpenLink(url: string): void {
@@ -238,7 +239,7 @@ export default {
         notifyWarning({
           title: translate('Popup blocked'),
           content: link,
-          closeAfter: {time: 10000, resetOnHover: true},
+          closeAfter: {time: NOTICE_MS, resetOnHover: true},
         })
       } else {
         notifyOffline(
