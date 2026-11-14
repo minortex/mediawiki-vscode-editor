@@ -7,7 +7,6 @@ export interface StoredSession {
   sessionId: string;
   fsPath: string;
   title: string;
-  section: number | null;
   wiki: WikiRecord;
   revid?: number;
   basetimestamp?: string;
@@ -25,9 +24,13 @@ export interface StoredSession {
 export class SessionStore {
   private queue: Promise<void> = Promise.resolve();
 
+  /** Temp files from the removed section-editing mode, kept out of the index. */
+  readonly legacySectionPaths: string[] = [];
+
   constructor(private readonly filePath: string | undefined) {}
 
   load(): StoredSession[] {
+    this.legacySectionPaths.length = 0;
     if (!this.filePath) return [];
     let raw: unknown;
     try {
@@ -38,11 +41,21 @@ export class SessionStore {
     if (!Array.isArray(raw)) return [];
     return raw.filter((item): item is StoredSession => {
       if (!item || typeof item !== 'object') return false;
-      const record = item as Partial<StoredSession>;
-      return typeof record.sessionId === 'string'
-        && typeof record.fsPath === 'string'
-        && typeof record.wiki?.origin === 'string'
-        && fs.existsSync(record.fsPath);
+      const record = item as Partial<StoredSession> & {section?: unknown};
+      if (
+        typeof record.sessionId !== 'string'
+        || typeof record.fsPath !== 'string'
+        || typeof record.wiki?.origin !== 'string'
+        || !fs.existsSync(record.fsPath)
+      ) {
+        return false;
+      }
+      // Section text must never be treated as a whole page.
+      if (record.section != null) {
+        this.legacySectionPaths.push(record.fsPath);
+        return false;
+      }
+      return true;
     });
   }
 

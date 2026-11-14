@@ -126,8 +126,7 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
     const root = config().get<string>('tempDir') || defaultDir();
     const dir = wikis.directoryFor(root, wiki);
     await fs.promises.mkdir(dir, {recursive: true});
-    const suffix = msg.section != null ? `.s${msg.section}` : '';
-    const fsPath = path.join(dir, `${safeName(msg.title)}${suffix}.${stamp()}.wiki`);
+    const fsPath = path.join(dir, `${safeName(msg.title)}.${stamp()}.wiki`);
 
     await fs.promises.writeFile(fsPath, msg.text, 'utf8');
     let doc = await vscode.workspace.openTextDocument(vscode.Uri.file(fsPath));
@@ -144,7 +143,6 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
       fsPath,
       ws,
       title: msg.title,
-      section: msg.section ?? null,
       wiki,
       revid: msg.revid,
       basetimestamp: msg.basetimestamp,
@@ -156,9 +154,8 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
       originalHash: createHash('sha256').update(msg.text).digest('hex'),
     });
 
-    const label = msg.section != null ? `${msg.title} § ${msg.section}` : msg.title;
     vscode.window.setStatusBarMessage(
-      `MediaWiki: 正在编辑 ${wiki.name} 的 ${label}，保存文件即刷新浏览器预览`,
+      `MediaWiki: 正在编辑 ${wiki.name} 的 ${msg.title}，保存文件即刷新浏览器预览`,
       8000,
     );
   }
@@ -398,11 +395,7 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
             !meta.awaitingConfirm &&
             (meta.state !== 'draft' || meta.autoRestore),
         )
-        .sort(([, a], [, b]) => {
-          const af = a.section == null ? 0 : 1;
-          const bf = b.section == null ? 0 : 1;
-          return af - bf || b.created - a.created;
-        });
+        .sort(([, a], [, b]) => b.created - a.created);
       let picked:
         | {sessionId: string; meta: SessionMeta; text: string}
         | undefined;
@@ -450,7 +443,6 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
         session: {
           sessionId,
           title: meta.title,
-          section: meta.section,
           text,
           dirty: !!doc?.isDirty,
           state: meta.state,
@@ -546,7 +538,7 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
     const picked = await vscode.window.showQuickPick(
       drafts.map(([sessionId, meta]) => ({
         label: meta.title,
-        description: meta.section == null ? meta.wiki.name : `${meta.wiki.name} § ${meta.section}`,
+        description: meta.wiki.name,
         detail: meta.fsPath,
         sessionId,
         meta,

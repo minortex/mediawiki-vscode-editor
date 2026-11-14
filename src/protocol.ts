@@ -11,7 +11,6 @@ export interface WikiIdentity {
 export interface SessionSnapshot {
   sessionId: string;
   title: string;
-  section: number | null;
   text: string;
   dirty: boolean;
   state: SessionState;
@@ -25,7 +24,6 @@ export interface OpenMessage {
   type: 'open';
   sessionId: string;
   title: string;
-  section?: number | null;
   text: string;
   revid?: number;
   basetimestamp?: string;

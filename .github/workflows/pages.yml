@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - 'ipe-plugin/**'
+      - 'scripts/ipe-version.mjs'
       - 'scripts/update-ipe-registry.mjs'
       - '.github/workflows/pages.yml'
     tags:

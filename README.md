@@ -35,7 +35,7 @@ https://minortex.github.io/mediawiki-vscode-editor/ipe-plugin/dev/registry.json
 以拓展为主，因为其真正持有用户未保存的改动，网页只负责推送站点内容和渲染，
 并附加到拓展上面可随时关闭。
 
-1. 替代了 IPE 的编辑按钮，浏览器正文即时变成预览，底部浮条可实现原来 IPE 的功能，~~那么，IPE 还能叫 IPE 么~~
+1. 在 IPE 工具箱里新增「在 VSCode 中编辑整页」按钮：只接管整页编辑，浏览器正文即时变成预览，底部浮条可实现原来 IPE 的功能。
 
 2. 网页端：
    - 点“保存更改”可以进行提交。

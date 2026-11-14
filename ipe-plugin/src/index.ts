@@ -2,15 +2,12 @@ import type {
   IPEModal,
   InPageEdit,
   IWikiPage,
-  QuickEditEventPayload,
   WatchlistAction,
 } from '@inpageedit/core'
 
 const WS_URL = 'ws://127.0.0.1:8927'
 const RECONNECT_MS = 5000
 const PENDING_CONFIRM_KEY = 'mwe-ipe-pending-save-confirmation'
-
-type Section = number | 'new' | undefined
 
 interface MwConfig {
   get<T = unknown>(key: string): T | undefined
@@ -60,7 +57,6 @@ interface ParseResponse {
 interface SessionInfo {
   sessionId: string
   title: string
-  section?: Section | null
   text: string
   dirty?: boolean
   revid?: number
@@ -71,7 +67,6 @@ interface SessionInfo {
 interface Session {
   id: string
   title: string
-  section: Section
   text: string
   wikiPage: IWikiPage
   remoteDirty: boolean
@@ -248,7 +243,6 @@ type OutgoingMessage =
       type: 'open'
       sessionId: string
       title: string
-      section: Section
       text: string
       revid?: number
       basetimestamp?: string
@@ -325,7 +319,7 @@ function parseWatchlist(value: string): WatchlistAction {
 
 export default {
   name: 'vscode-editor',
-  inject: ['quickEdit', 'quickUpload', 'templatesUsed', 'quickDiff'],
+  inject: ['toolbox', 'quickUpload', 'templatesUsed', 'quickDiff'],
   apply(ctx: InPageEdit) {
     const API = apiUrl()
     const windowId = (() => {
@@ -358,7 +352,6 @@ export default {
     let registeringWiki: Promise<unknown> | null = null
     let registerSeq = 0
     const registerWaiters: Record<string, Waiter<unknown>> = {}
-    let pendingStart: QuickEditEventPayload | null = null
     let sessionQueryPromise: Promise<SessionQueryResult> | null = null
     let sessionQuerySeq = 0
     const sessionWaiters: Record<string, Waiter<SessionQueryResult>> = {}
@@ -411,18 +404,6 @@ export default {
       })) {
         pendingConfirmSent = true
       }
-    }
-
-    // ---------- native modal guard ----------
-    function ensureGuardStyle(): void {
-      if (document.getElementById('mwe-ipe-guard-style')) return
-      const style = document.createElement('style')
-      style.id = 'mwe-ipe-guard-style'
-      style.textContent = [
-        '.ipe-modal-modal__window.ipe-quickEdit{display:none!important;}',
-        '.ipe-modal-backdrop:has(+ .ipe-modal-modal .ipe-quickEdit){display:none!important;}',
-      ].join('\n')
-      document.head.append(style)
     }
 
     const barStyleId = 'mwe-ipe-bar-style'
@@ -715,7 +696,6 @@ export default {
             const existing = await queryExistingSession()
             if (existing.session) {
               await adoptSession(existing.session)
-              pendingStart = null
               return
             }
             if (existing.busy) {
@@ -725,17 +705,7 @@ export default {
                   const retry = await queryExistingSession(true)
                   if (retry.session) {
                     await adoptSession(retry.session)
-                    pendingStart = null
                     return
-                  }
-                  const pending = pendingStart
-                  pendingStart = null
-                  if (pending) {
-                    startEdit(pending).catch(error => {
-                      status(
-                        `启动失败：${error instanceof Error ? error.message : String(error)}`,
-                      )
-                    })
                   }
                 } catch {}
               }, 500)
@@ -752,16 +722,6 @@ export default {
             endSession()
             notifyOffline('扩展没有该会话，已退出编辑态。', '会话已结束')
             return
-          }
-          if (pendingStart) {
-            const pending = pendingStart
-            pendingStart = null
-            startEdit(pending).catch(error => {
-              status(
-                `启动失败：${error instanceof Error ? error.message : String(error)}`,
-                'error',
-              )
-            })
           }
         })()
       })
@@ -1136,16 +1096,15 @@ export default {
       }
     }
 
-    function consumeAutoEdit(): {section?: number | 'new'} | null {
+    function consumeAutoEdit(): boolean {
       const url = new URL(location.href)
-      if (url.searchParams.get('external-editor') !== '1') return null
-      const section = url.searchParams.get('external-editor-section')
+      if (url.searchParams.get('external-editor') !== '1') return false
       url.searchParams.delete('external-editor')
       url.searchParams.delete('external-editor-section')
       try {
         history.replaceState(null, '', url.pathname + url.search + url.hash)
       } catch {}
-      return {section: section == null || section === '' ? undefined : Number(section)}
+      return true
     }
 
     function isArticleLink(anchor: HTMLAnchorElement): boolean {
@@ -1263,10 +1222,6 @@ export default {
 
     async function renderPreview(): Promise<boolean> {
       if (!session) return false
-      if (session.section != null) {
-        setStatus('VSCode 编辑中（章节预览暂不支持）')
-        return false
-      }
       const seq = ++previewSeq
       let data: ParseResponse
       try {
@@ -1367,8 +1322,8 @@ export default {
       let wikiPage: IWikiPage
       try {
         wikiPage = info.revid
-          ? await ctx.wikiPage.newFromRevision(info.revid, info.section ?? undefined)
-          : await ctx.wikiPage.newFromTitle(info.title, false, info.section ?? undefined)
+          ? await ctx.wikiPage.newFromRevision(info.revid)
+          : await ctx.wikiPage.newFromTitle(info.title, false)
       } catch (error) {
         status(`恢复会话失败：${error instanceof Error ? error.message : String(error)}`, 'error')
         return
@@ -1376,7 +1331,6 @@ export default {
       session = {
         id: info.sessionId,
         title: info.title,
-        section: info.section ?? undefined,
         text: info.text,
         wikiPage,
         remoteDirty: !!info.dirty,
@@ -1390,10 +1344,9 @@ export default {
       schedulePreview()
     }
 
-    async function startEdit(payload: QuickEditEventPayload): Promise<void> {
+    async function beginPageEdit(): Promise<void> {
       if (session) return
       if (!connected) {
-        pendingStart = payload
         notifyOffline()
         return
       }
@@ -1401,9 +1354,6 @@ export default {
         await ensureWikiRegistered()
         const existing = await queryExistingSession(true)
         if (existing.busy) {
-          try {
-            payload.modal?.close()
-          } catch {}
           notifyOffline(
             '该页面已经在另一个浏览器窗口或 VSCode 编辑会话中。请先关闭那边的编辑会话后再试。',
             '页面已在编辑中',
@@ -1414,41 +1364,41 @@ export default {
           await adoptSession(existing.session)
           return
         }
+        const title = getMwConfig<string>('wgPageName')
+        if (!title) throw new Error('无法读取当前页面标题')
+        const wikiPage = await ctx.wikiPage.newFromTitle(title, false)
+        const revision = wikiPage.revisions[0]
+        session = {
+          id: `s${Date.now()}`,
+          title,
+          text: revision?.content || '',
+          wikiPage,
+          remoteDirty: false,
+          changed: false,
+          busy: false,
+          conflict: false,
+        }
+        showBar(null)
+        document.body.classList.remove('ipe-modal-no-scroll')
+        setStatus('VSCode 编辑中，保存文件即刷新预览')
+        send({
+          type: 'open',
+          sessionId: session.id,
+          title: session.title,
+          text: session.text,
+          revid: revision?.revid,
+          basetimestamp: revision?.timestamp,
+          starttimestamp: new Date().toISOString(),
+          windowId,
+          wiki: location.origin,
+        })
       } catch (error) {
-        const message = `站点注册失败：${
+        const message = `启动编辑失败：${
           error instanceof Error ? error.message : String(error)
-        }。请更新网页端脚本并刷新页面。`
+        }。请确认 VSCode 扩展已启动并已更新网页端脚本。`
         status(message, 'error')
-        notifyOffline(message, '站点注册失败')
-        return
+        notifyOffline(message, '启动编辑失败')
       }
-      const revision = payload.wikiPage.revisions[0]
-      session = {
-        id: `s${Date.now()}`,
-        title: payload.wikiPage.pageInfo?.title || payload.options.title,
-        section: payload.options.section,
-        text: revision?.content || '',
-        wikiPage: payload.wikiPage,
-        remoteDirty: false,
-        changed: false,
-        busy: false,
-        conflict: false,
-      }
-      showBar(payload.modal)
-      document.body.classList.remove('ipe-modal-no-scroll')
-      setStatus('VSCode 编辑中，保存文件即刷新预览')
-      send({
-        type: 'open',
-        sessionId: session.id,
-        title: session.title,
-        section: session.section,
-        text: session.text,
-        revid: revision?.revid,
-        basetimestamp: revision?.timestamp,
-        starttimestamp: new Date().toISOString(),
-        windowId,
-        wiki: location.origin,
-      })
     }
 
     function showImagesUsed(): void {
@@ -1553,12 +1503,7 @@ export default {
 
     async function latestPageForSession(): Promise<IWikiPage | null> {
       if (!session) return null
-      return ctx.wikiPage.newFromTitle(
-        session.title,
-        false,
-        session.section,
-        true,
-      )
+      return ctx.wikiPage.newFromTitle(session.title, false, undefined, true)
     }
 
     function reportConflict(
@@ -1613,7 +1558,6 @@ export default {
           text,
           summary: summary || '',
           minor: !!minor,
-          section: session.section,
           watchlist: session.watchlist || parseWatchlist('nochange'),
         })
           session.text = text
@@ -1685,21 +1629,35 @@ export default {
     }
 
     // ---------- lifecycle ----------
+    function createEditIcon(): SVGElement {
+      const ns = 'http://www.w3.org/2000/svg'
+      const svg = document.createElementNS(ns, 'svg')
+      svg.setAttribute('viewBox', '0 0 24 24')
+      svg.setAttribute('width', '24')
+      svg.setAttribute('height', '24')
+      svg.setAttribute('fill', 'none')
+      svg.setAttribute('stroke', 'currentColor')
+      svg.setAttribute('stroke-width', '2')
+      svg.setAttribute('stroke-linecap', 'round')
+      svg.setAttribute('stroke-linejoin', 'round')
+      const path = document.createElementNS(ns, 'path')
+      path.setAttribute('d', 'M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z')
+      svg.append(path)
+      return svg
+    }
+
+    const editButtonId = 'vscode-editor-page'
     pendingConfirm = readPendingConfirm()
-    ensureGuardStyle()
     connect()
 
-    ctx.on('quick-edit/show-modal', payload => {
-      try {
-        payload.modal.close()
-      } catch {}
-      document.body.classList.remove('ipe-modal-no-scroll')
-    })
-
-    ctx.on('quick-edit/wiki-page', payload => {
-      startEdit(payload).catch(error => {
-        status(`启动失败：${error instanceof Error ? error.message : String(error)}`)
-      })
+    ctx.toolbox?.addButton({
+      id: editButtonId,
+      group: 'group1',
+      icon: createEditIcon(),
+      tooltip: '在 VSCode 中编辑整页',
+      onClick: () => {
+        void beginPageEdit()
+      },
     })
 
     document.addEventListener('click', onClick, true)
@@ -1722,9 +1680,9 @@ export default {
       } catch {}
       socket = null
       document.removeEventListener('click', onClick, true)
+      ctx.toolbox?.removeButton(editButtonId)
       restorePage()
       endSession()
-      document.getElementById('mwe-ipe-guard-style')?.remove()
       document.getElementById(barStyleId)?.remove()
       document.getElementById('mwe-offline-notice')?.remove()
     })
@@ -1733,17 +1691,7 @@ export default {
     if (autoEdit) {
       window.setTimeout(() => {
         if (disposed) return
-        try {
-          const title = getMwConfig<string>('wgPageName')
-          if (!title) throw new Error('无法读取当前页面标题')
-          if (typeof ctx.quickEdit !== 'function') throw new Error('InPageEdit 缺少 quickEdit')
-          void ctx.quickEdit({title, section: autoEdit.section})
-        } catch (error) {
-          status(
-            `自动进入编辑失败：${error instanceof Error ? error.message : String(error)}`,
-            'error',
-          )
-        }
+        void beginPageEdit()
       }, 0)
     }
   },

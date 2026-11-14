@@ -7,7 +7,6 @@ export interface SessionMeta {
   fsPath: string;
   ws: SocketLike | null;
   title: string;
-  section: number | null;
   wiki: WikiRecord;
   revid?: number;
   basetimestamp?: string;
@@ -38,7 +37,6 @@ export class SessionManager {
         fsPath: entry.fsPath,
         ws: null,
         title: entry.title,
-        section: entry.section ?? null,
         wiki: entry.wiki,
         revid: entry.revid,
         basetimestamp: entry.basetimestamp,
@@ -72,7 +70,6 @@ export class SessionManager {
       sessionId,
       fsPath: meta.fsPath,
       title: meta.title,
-      section: meta.section,
       wiki: meta.wiki,
       revid: meta.revid,
       basetimestamp: meta.basetimestamp,

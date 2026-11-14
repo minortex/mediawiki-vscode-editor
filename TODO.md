@@ -1,5 +1,15 @@
 # TODO
 
+## 只保留整页编辑（已完成）
+
+- [x] 不再劫持 IPE 的 `quick-edit` 事件：删除模态关闭与 guard CSS，IPE 自带编辑器恢复原生行为（含章节编辑）。
+- [x] 新增 IPE 工具箱按钮「在 VSCode 中编辑整页」（`ctx.toolbox.addButton`，`dispose` 时移除）。
+- [x] 删除章节编辑相关字段与逻辑（协议、会话元数据、临时文件名 `.sN`、`query` 排序、`wikiPage.newFromTitle/edit` 的 section 参数、`external-editor-section`）。
+- [x] 旧章节会话隔离：`SessionStore.load()` 拒绝 `section != null` 的条目并记录到 `legacySectionPaths`，启动时提示文件路径；孤儿清理跳过 `.s<N>.`/`.snew.` 命名，避免误删。
+- [x] 扩展显式拒绝旧版网页脚本的章节 `open` 请求（提示更新网页端脚本）。
+- [x] 章节预览限制随之移除，整页会话始终可预览。
+- [ ] 网页端尚未发布：需要提交后由 pages 工作流产出新的 `ipe-plugin/dist`，浏览器才能看到新按钮。
+
 ## 会话元数据持久化加固（待办）
 
 - [x] `deactivate()` 改为 `async`，`persist()` 后 `await flush()`，正常退出/重载前等待写盘队列。

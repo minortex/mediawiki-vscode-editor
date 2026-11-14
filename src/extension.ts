@@ -286,6 +286,12 @@ function handleMessage(
   } else if (msg.type === 'session-query') {
     controller.query(msg, ws).catch(() => {});
   } else if (msg.type === 'open') {
+    if ('section' in msg && msg.section != null) {
+      vscode.window.showWarningMessage(
+        'MediaWiki: 网页端脚本仍在请求章节编辑。本版本只支持整页编辑，请更新网页端脚本后重试。',
+      );
+      return;
+    }
     const wiki = wikis.resolve(context, msg.wiki, ws.origin);
     if (!wiki) {
       vscode.window.showWarningMessage(
@@ -338,6 +344,15 @@ function activate(context: vscode.ExtensionContext): void {
   );
   sessionManager = new SessionManager(sessionStore, () => updateStatus());
   sessionManager.load();
+  if (sessionStore.legacySectionPaths.length) {
+    const paths = sessionStore.legacySectionPaths;
+    const shown = paths.slice(0, 3).join('\n');
+    const more = paths.length > 3 ? `\n…等 ${paths.length} 个文件` : '';
+    vscode.window.showWarningMessage(
+      'MediaWiki: 已停止管理旧的章节编辑草稿（当前版本只支持整页编辑），临时文件仍保留：\n' +
+        `${shown}${more}`,
+    );
+  }
   syncRestoredSessions();
   setTimeout(syncRestoredSessions, 2000).unref();
   void removeOrphanTemps(

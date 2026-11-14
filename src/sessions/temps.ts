@@ -3,6 +3,8 @@ import path from 'node:path';
 
 /** Session temp files: `<title>.<yyyyMMdd-HHmmss>.wiki`. */
 const TEMP_NAME = /\.\d{8}-\d{6}\.wiki$/u;
+/** Section-editing leftovers: `<title>.s<N>.<yyyyMMdd-HHmmss>.wiki`. */
+const LEGACY_SECTION_NAME = /\.s(?:\d+|new)\.\d{8}-\d{6}\.wiki$/u;
 
 /** Ignore files created recently; a live session may still be registering. */
 const MIN_AGE_MS = 60_000;
@@ -36,6 +38,7 @@ export async function removeOrphanTemps(
     }
     for (const file of files) {
       if (!file.isFile() || !TEMP_NAME.test(file.name)) continue;
+      if (LEGACY_SECTION_NAME.test(file.name)) continue;
       const fsPath = path.join(dir, file.name);
       if (keepPaths.has(fsPath)) continue;
       try {

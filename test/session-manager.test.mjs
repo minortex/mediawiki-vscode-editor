@@ -162,3 +162,32 @@ test('closePageOnConfirm survives a restart', async () => {
   assert.equal(reloaded.get('s1')?.awaitingConfirm, false);
   fs.rmSync(dir, {recursive: true, force: true});
 });
+
+test('legacy section sessions are quarantined, not loaded as pages', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'session-manager-legacy-'));
+  const file = path.join(dir, 'sessions.json');
+  const full = path.join(dir, 'full.wiki');
+  const section = path.join(dir, 'Page.s2.20260101-000000.wiki');
+  fs.writeFileSync(full, 'full');
+  fs.writeFileSync(section, 'section');
+  const base = {
+    title: 'Page',
+    wiki: {id: 'example.org', name: 'Example', origin: 'https://example.org'},
+    created: 1,
+    state: 'draft',
+    autoRestore: true,
+  };
+  fs.writeFileSync(
+    file,
+    JSON.stringify([
+      {sessionId: 'full', fsPath: full, section: null, ...base},
+      {sessionId: 'old', fsPath: section, section: 2, ...base},
+    ]),
+  );
+  const store = new SessionStore(file);
+  const loaded = store.load();
+  assert.deepEqual(loaded.map(entry => entry.sessionId), ['full']);
+  assert.deepEqual(store.legacySectionPaths, [section]);
+  assert.equal(fs.existsSync(section), true);
+  fs.rmSync(dir, {recursive: true, force: true});
+});
