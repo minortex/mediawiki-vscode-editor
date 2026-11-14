@@ -356,6 +356,7 @@ export default {
     let sessionQuerySeq = 0
     const sessionWaiters: Record<string, Waiter<SessionQueryResult>> = {}
     let pendingConfirm: PendingConfirm | null = null
+    let pendingAutoEdit = false
     let pendingConfirmSent = false
     let barResizeObserver: ResizeObserver | null = null
 
@@ -690,6 +691,11 @@ export default {
         connected = true
         document.getElementById('mwe-offline-notice')?.remove()
         sendPendingConfirm()
+        const startPendingAutoEdit = (): void => {
+          const pending = pendingAutoEdit
+          pendingAutoEdit = false
+          if (pending && !session) void beginPageEdit()
+        }
         void (async () => {
           try {
             await ensureWikiRegistered()
@@ -708,6 +714,7 @@ export default {
                     return
                   }
                 } catch {}
+                startPendingAutoEdit()
               }, 500)
               return
             }
@@ -723,6 +730,7 @@ export default {
             notifyOffline('扩展没有该会话，已退出编辑态。', '会话已结束')
             return
           }
+          startPendingAutoEdit()
         })()
       })
       socket.addEventListener('close', () => {
@@ -1344,12 +1352,17 @@ export default {
       schedulePreview()
     }
 
-    async function beginPageEdit(): Promise<void> {
+    async function beginPageEdit(auto = false): Promise<void> {
       if (session) return
       if (!connected) {
+        if (auto) {
+          pendingAutoEdit = true
+          return
+        }
         notifyOffline()
         return
       }
+      pendingAutoEdit = false
       try {
         await ensureWikiRegistered()
         const existing = await queryExistingSession(true)
@@ -1691,7 +1704,7 @@ export default {
     if (autoEdit) {
       window.setTimeout(() => {
         if (disposed) return
-        void beginPageEdit()
+        void beginPageEdit(true)
       }, 0)
     }
   },
