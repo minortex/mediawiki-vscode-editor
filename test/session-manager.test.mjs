@@ -20,7 +20,7 @@ test('session manager persists, detaches, drafts and restores', async () => {
 
   manager.add('s1', {
     fsPath: temp,
-    ws,
+    sockets: new Set([ws]),
     title: 'Page',
     section: null,
     wiki: {id: 'example.org', name: 'Example', origin: 'https://example.org'},
@@ -33,7 +33,7 @@ test('session manager persists, detaches, drafts and restores', async () => {
 
   manager.detachWs(ws);
   assert.equal(manager.get('s1')?.state, 'detached');
-  assert.equal(manager.get('s1')?.ws, null);
+  assert.equal(manager.get('s1')?.sockets.size, 0);
 
   manager.markDraft('s1', false);
   assert.equal(manager.get('s1')?.state, 'draft');
@@ -56,7 +56,7 @@ test('a restored draft becomes detached, a closed draft stays', async () => {
   const file = path.join(dir, 'sessions.json');
   const manager = new SessionManager(new SessionStore(file));
   const base = {
-    ws: null,
+    sockets: new Set(),
     title: 'Page',
     section: null,
     wiki: {id: 'example.org', name: 'Example', origin: 'https://example.org'},
@@ -86,7 +86,7 @@ test('a pending save confirmation becomes a restorable draft after a restart', a
   const manager = new SessionManager(new SessionStore(file));
   manager.add('s1', {
     fsPath: temp,
-    ws: null,
+    sockets: new Set(),
     title: 'Page',
     section: null,
     wiki: {id: 'example.org', name: 'Example', origin: 'https://example.org'},
@@ -143,7 +143,7 @@ test('closePageOnConfirm survives a restart', async () => {
   const manager = new SessionManager(new SessionStore(file));
   manager.add('s1', {
     fsPath: temp,
-    ws: null,
+    sockets: new Set(),
     title: 'Page',
     section: null,
     wiki: {id: 'example.org', name: 'Example', origin: 'https://example.org'},

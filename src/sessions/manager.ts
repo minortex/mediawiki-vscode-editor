@@ -5,7 +5,7 @@ import type {SessionStore, StoredSession} from './store';
 
 export interface SessionMeta {
   fsPath: string;
-  ws: SocketLike | null;
+  sockets: Set<SocketLike>;
   title: string;
   wiki: WikiRecord;
   revid?: number;
@@ -35,7 +35,7 @@ export class SessionManager {
     for (const entry of this.store.load()) {
       const meta: SessionMeta = {
         fsPath: entry.fsPath,
-        ws: null,
+        sockets: new Set(),
         title: entry.title,
         wiki: entry.wiki,
         revid: entry.revid,
@@ -87,7 +87,9 @@ export class SessionManager {
   add(sessionId: string, meta: SessionMeta): void {
     this.sessions.set(sessionId, meta);
     this.byPath.set(meta.fsPath, sessionId);
-    if (meta.ws) this.addWsSession(meta.ws, sessionId);
+    if (meta.sockets.size) {
+      for (const ws of meta.sockets) this.addWsSession(ws, sessionId);
+    }
     this.persist();
     this.onChange();
   }
@@ -118,7 +120,8 @@ export class SessionManager {
     if (!meta) return undefined;
     this.sessions.delete(sessionId);
     this.byPath.delete(meta.fsPath);
-    if (meta.ws) this.wsSessions.get(meta.ws)?.delete(sessionId);
+    for (const ws of meta.sockets) this.wsSessions.get(ws)?.delete(sessionId);
+    meta.sockets.clear();
     this.persist();
     this.onChange();
     return meta;
@@ -127,8 +130,7 @@ export class SessionManager {
   attach(sessionId: string, ws: SocketLike): void {
     const meta = this.sessions.get(sessionId);
     if (!meta) return;
-    if (meta.ws && meta.ws !== ws) this.wsSessions.get(meta.ws)?.delete(sessionId);
-    meta.ws = ws;
+    meta.sockets.add(ws);
     this.addWsSession(ws, sessionId);
     this.persist();
     this.onChange();
@@ -137,8 +139,8 @@ export class SessionManager {
   detachSession(sessionId: string): void {
     const meta = this.sessions.get(sessionId);
     if (!meta) return;
-    if (meta.ws) this.wsSessions.get(meta.ws)?.delete(sessionId);
-    meta.ws = null;
+    for (const ws of meta.sockets) this.wsSessions.get(ws)?.delete(sessionId);
+    meta.sockets.clear();
     if (meta.state !== 'draft') meta.state = 'detached';
     this.persist();
     this.onChange();
@@ -150,8 +152,8 @@ export class SessionManager {
     for (const id of ids) {
       const meta = this.sessions.get(id);
       if (!meta) continue;
-      meta.ws = null;
-      if (meta.state !== 'draft') meta.state = 'detached';
+      meta.sockets.delete(ws);
+      if (meta.sockets.size === 0 && meta.state !== 'draft') meta.state = 'detached';
     }
     if (ids.length) {
       this.persist();
@@ -163,8 +165,8 @@ export class SessionManager {
   markDraft(sessionId: string, autoRestore = false, clearAwaitingConfirm = false): void {
     const meta = this.sessions.get(sessionId);
     if (!meta) return;
-    if (meta.ws) this.wsSessions.get(meta.ws)?.delete(sessionId);
-    meta.ws = null;
+    for (const ws of meta.sockets) this.wsSessions.get(ws)?.delete(sessionId);
+    meta.sockets.clear();
     meta.state = 'draft';
     meta.autoRestore = autoRestore;
     if (clearAwaitingConfirm) meta.awaitingConfirm = false;

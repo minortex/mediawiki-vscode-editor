@@ -132,6 +132,7 @@ export interface SessionResultMessage {
   requestId: string;
   ok: boolean;
   session?: SessionSnapshot | null;
+  /** Legacy: older extensions reported a session owned by another tab. */
   busy?: boolean;
   error?: string;
 }
@@ -225,6 +226,7 @@ export interface EditorClosedMessage {
   sessionId: string;
 }
 
+/** Legacy: older extensions sent this when taking over a session from another tab. */
 export interface PreemptedMessage {
   type: 'preempted';
   sessionId: string;

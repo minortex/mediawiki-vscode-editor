@@ -123,10 +123,11 @@ function sendFinish(
   sessionId: string,
   result: 'saved' | 'discarded' | 'unchanged' | 'closed',
 ): void {
-  if (!meta.ws) return;
-  try {
-    meta.ws.send(JSON.stringify({type: 'finish', sessionId, result}));
-  } catch {}
+  for (const ws of meta.sockets) {
+    try {
+      ws.send(JSON.stringify({type: 'finish', sessionId, result}));
+    } catch {}
+  }
 }
 
 async function closeEditor(fsPath: string): Promise<void> {
@@ -179,9 +180,9 @@ function handleEditorClosed(fsPath: string): void {
   if (!sessionId || !meta || meta.awaitingConfirm || meta.closePageOnConfirm) return;
   clearTimeout(dirtyTimers.get(fsPath));
   dirtyTimers.delete(fsPath);
-  if (meta.ws) {
+  for (const ws of meta.sockets) {
     try {
-      meta.ws.send(JSON.stringify({type: 'editor-closed', sessionId}));
+      ws.send(JSON.stringify({type: 'editor-closed', sessionId}));
     } catch {}
   }
   sessionManager?.markDraft(sessionId);
@@ -348,9 +349,12 @@ function handleMessage(
   } else if (msg.type === 'locate') {
     locateInEditor(msg).catch(() => {});
   } else if (msg.type === 'request-save') {
-    controller.requestSave(msg).catch((error: unknown) =>
+    controller.requestSave(msg, ws).catch((error: unknown) =>
       vscode.window.showErrorMessage(
-        `MediaWiki: ${error instanceof Error ? error.message : String(error)}`,
+        vscode.l10n.t(
+          'MediaWiki: {0}',
+          error instanceof Error ? error.message : String(error),
+        ),
       ),
     );
   }
@@ -553,7 +557,7 @@ function activate(context: vscode.ExtensionContext): void {
       });
       if (summary === undefined) return;
 
-      if (!meta.ws) {
+      if (!meta.sockets.size) {
         if (doc.isDirty) await doc.save();
         sessionManager?.markDraft(sessionId);
         await closeEditor(meta.fsPath);

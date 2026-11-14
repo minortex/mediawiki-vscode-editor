@@ -59,7 +59,7 @@ export interface SessionController {
     summary: string,
     minor: boolean,
   ): Promise<SaveOutcome>;
-  requestSave(msg: RequestSaveMessage): Promise<void>;
+  requestSave(msg: RequestSaveMessage, ws: SocketLike): Promise<void>;
   restoreDraft(): Promise<void>;
   pageUrl(wiki: WikiRecord, title: string): string | undefined;
   ensureSessionEditor(meta: SessionMeta): Promise<vscode.TextDocument | undefined>;
@@ -76,6 +76,25 @@ function sameOrigin(a: unknown, b: unknown): boolean {
     return normalizeOrigin(a) === normalizeOrigin(b);
   } catch {
     return false;
+  }
+}
+
+function liveSocket(meta: SessionMeta): SocketLike | undefined {
+  for (const ws of meta.sockets) {
+    if (ws.readyState === undefined || ws.readyState === 1) return ws;
+  }
+  return undefined;
+}
+
+function sendFinishTo(
+  sockets: Iterable<SocketLike>,
+  sessionId: string,
+  result: 'saved' | 'discarded' | 'unchanged' | 'closed',
+): void {
+  for (const ws of sockets) {
+    try {
+      ws.send(JSON.stringify({type: 'finish', sessionId, result}));
+    } catch {}
   }
 }
 
@@ -118,7 +137,7 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
     }
     await vscode.window.showTextDocument(doc, {preview: false});
     language?.check(doc, meta.wiki, meta.title).catch(() => {});
-    meta.state = 'detached';
+    if (meta.sockets.size === 0) meta.state = 'detached';
     return doc;
   }
 
@@ -141,7 +160,7 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
 
     sessionManager.add(msg.sessionId, {
       fsPath,
-      ws,
+      sockets: new Set([ws]),
       title: msg.title,
       wiki,
       revid: msg.revid,
@@ -172,7 +191,9 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
       saveFailures.has(msg.sessionId) &&
       msg.result !== 'saved'
     ) {
+      const sockets = [...meta.sockets];
       sessionManager.markDraft(msg.sessionId);
+      sendFinishTo(sockets, msg.sessionId, 'closed');
       vscode.window.showWarningMessage(
         vscode.l10n.t(
           'MediaWiki: Commit failed; the temp file was kept as a draft: {0}',
@@ -182,7 +203,9 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
       return;
     }
     if (msg.result !== 'saved' && msg.result !== 'unchanged' && msg.result !== 'discarded') {
+      const sockets = [...meta.sockets];
       sessionManager.markDraft(msg.sessionId);
+      sendFinishTo(sockets, msg.sessionId, 'closed');
       vscode.window.showWarningMessage(
         vscode.l10n.t(
           'MediaWiki: The editing session was disconnected; the temp file was kept: {0}',
@@ -203,8 +226,10 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
       return;
     }
     saveFailures.delete(msg.sessionId);
+    const sockets = [...meta.sockets];
     sessionManager.remove(msg.sessionId);
     await closeAndDelete(meta.fsPath);
+    sendFinishTo(sockets, msg.sessionId, msg.result);
     vscode.window.setStatusBarMessage(vscode.l10n.t('MediaWiki: Editing session ended'), 5000);
   }
 
@@ -309,6 +334,7 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
         document => document.uri.fsPath === meta.fsPath,
       );
       if (doc?.isDirty) {
+        const sockets = [...meta.sockets];
         sessionManager.markDraft(msg.sessionId, false, true);
         vscode.window.showWarningMessage(
           vscode.l10n.t(
@@ -317,9 +343,10 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
           ),
         );
         reply({ok: true});
+        sendFinishTo(sockets, msg.sessionId, 'closed');
         return;
       }
-      const closePage = meta.closePageOnConfirm;
+      const sockets = [...meta.sockets];
       clearDirty(meta.fsPath);
       sessionManager.remove(msg.sessionId);
       await closeAndDelete(meta.fsPath);
@@ -328,11 +355,7 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
         5000,
       );
       reply({ok: true});
-      if (closePage) {
-        try {
-          ws.send(JSON.stringify({type: 'finish', sessionId: msg.sessionId, result: 'saved'}));
-        } catch {}
-      }
+      sendFinishTo(sockets, msg.sessionId, 'saved');
     } catch (error) {
       reply({ok: false, error: errorMessage(error)});
       vscode.window.showWarningMessage(
@@ -392,7 +415,6 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
     const reply = (payload: {
       ok: boolean;
       session?: SessionResultMessage['session'];
-      busy?: boolean;
       error?: string;
     }): void => {
       const response: SessionResultMessage = {
@@ -400,7 +422,6 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
         requestId,
         ok: payload.ok,
         session: payload.session,
-        busy: payload.busy,
         error: payload.error,
       };
       try {
@@ -452,18 +473,6 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
         return;
       }
       const {sessionId, meta, text} = picked;
-      const socketAlive =
-        !!meta.ws &&
-        (meta.ws.readyState === undefined || meta.ws.readyState === 1);
-      if (socketAlive && meta.ws !== ws) {
-        reply({ok: true, session: null, busy: true});
-        return;
-      }
-      if (meta.ws && meta.ws !== ws) {
-        try {
-          meta.ws.send(JSON.stringify({type: 'preempted', sessionId}));
-        } catch {}
-      }
       sessionManager.attach(sessionId, ws);
       sessionManager.markAttached(sessionId);
       const doc = vscode.workspace.textDocuments.find(
@@ -492,8 +501,9 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
   async function navigate(request: NavigateEditRequest): Promise<boolean> {
     const meta = sessionManager
       .values()
-      .find(item => item.ws && sameOrigin(item.wiki.origin, request.wiki.origin));
-    if (!meta?.ws || !getBridge()) {
+      .find(item => liveSocket(item) && sameOrigin(item.wiki.origin, request.wiki.origin));
+    const ws = meta && liveSocket(meta);
+    if (!ws || !getBridge()) {
       vscode.window.showWarningMessage(
         vscode.l10n.t('MediaWiki: The browser is not connected; cannot open the target page.'),
       );
@@ -501,7 +511,7 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
     }
     try {
       const reply = await getBridge()!.request<{opened: boolean}>(
-        meta.ws,
+        ws,
         {type: 'navigate-edit', title: request.title, fragment: request.fragment},
         5000,
       );
@@ -528,7 +538,8 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
     minor: boolean,
   ): Promise<SaveOutcome> {
     const meta = sessionManager.get(sessionId);
-    if (!meta?.ws || !getBridge()) {
+    const ws = meta && liveSocket(meta);
+    if (!meta || !ws || !getBridge()) {
       vscode.window.showWarningMessage(
         vscode.l10n.t('MediaWiki: The browser is not connected; cannot submit.'),
       );
@@ -540,7 +551,7 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
       );
       if (doc?.isDirty) await doc.save();
       const reply = await getBridge()!.request<{ok: boolean; error?: string}>(
-        meta.ws,
+        ws,
         {type: 'save', sessionId, text, summary, minor},
         15000,
       );
@@ -553,7 +564,7 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
     }
   }
 
-  async function requestSave(msg: RequestSaveMessage): Promise<void> {
+  async function requestSave(msg: RequestSaveMessage, ws: SocketLike): Promise<void> {
     const meta = sessionManager.get(msg.sessionId);
     if (!meta) return;
     const doc = vscode.workspace.textDocuments.find(
@@ -561,7 +572,7 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
     );
     if (!doc) return;
     if (doc.isDirty) await doc.save();
-    getBridge()?.broadcast({
+    getBridge()?.send(ws, {
       type: 'save',
       sessionId: msg.sessionId,
       text: doc.getText(),

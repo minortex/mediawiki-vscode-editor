@@ -50,7 +50,7 @@ function fixture() {
   const manager = new SessionManager(new SessionStore(undefined));
   manager.add('s1', {
     fsPath,
-    ws: null,
+    sockets: new Set(),
     title: 'Page',
     section: null,
     wiki: {id: 'w', name: 'Wiki', origin: 'https://example.org'},
@@ -125,6 +125,7 @@ test('edited compares the current text with the original page hash', () => {
 
 test('confirmation sends finish when the page should close', async () => {
   const {dir, fsPath, manager, controller, ws, messages} = fixture();
+  manager.attach('s1', ws);
   manager.get('s1').closePageOnConfirm = true;
   await controller.finish({sessionId: 's1', result: 'saved'});
   await controller.confirmSaved({sessionId: 's1', origin: 'https://example.org'}, ws);
@@ -198,36 +199,22 @@ test('an edit conflict writes git-style markers into the open document', async (
   fs.rmSync(dir, {recursive: true, force: true});
 });
 
-test('another window cannot preempt an active edit session', async () => {
-  const {dir, manager, controller} = fixture();
-  const owner = {origin: 'https://example.org', send() {}};
+test('multiple browser tabs share one editing session', async () => {
+  const {dir, manager, controller, messages, ws: owner} = fixture();
   manager.attach('s1', owner);
   manager.get('s1').windowId = 'window-owner';
-  const intruder = {
-    origin: 'https://example.org',
-    messages: [],
-    send(value) {
-      this.messages.push(JSON.parse(value));
-    },
-  };
   await controller.query(
     {
       requestId: 'q1',
       origin: 'https://example.org',
       title: 'Page',
-      windowId: 'window-intruder',
+      windowId: 'window-owner',
     },
-    intruder,
+    owner,
   );
-  assert.equal(intruder.messages.at(-1).busy, true);
-  assert.equal(intruder.messages.at(-1).session, null);
-  assert.equal(manager.get('s1')?.ws, owner);
-  assert.equal(
-    intruder.messages.some(message => message.type === 'preempted'),
-    false,
-  );
+  assert.equal(messages.at(-1).session.sessionId, 's1');
 
-  const sameWindowRetry = {
+  const second = {
     origin: 'https://example.org',
     messages: [],
     send(value) {
@@ -239,32 +226,44 @@ test('another window cannot preempt an active edit session', async () => {
       requestId: 'q2',
       origin: 'https://example.org',
       title: 'Page',
-      windowId: 'window-owner',
+      windowId: 'window-second',
     },
-    sameWindowRetry,
+    second,
   );
-  assert.equal(sameWindowRetry.messages.at(-1).busy, true);
-  assert.equal(manager.get('s1')?.ws, owner);
+  assert.equal(second.messages.at(-1).busy, undefined);
+  assert.equal(second.messages.at(-1).session.sessionId, 's1');
+  assert.deepEqual([...manager.get('s1')?.sockets], [owner, second]);
+  assert.equal(
+    messages.some(message => message.type === 'preempted'),
+    false,
+  );
+  assert.equal(manager.get('s1')?.state, 'attached');
 
   manager.detachWs(owner);
-  const reload = {
+  assert.equal(manager.get('s1')?.state, 'attached');
+  assert.equal(manager.get('s1')?.sockets.has(second), true);
+
+  manager.detachWs(second);
+  assert.equal(manager.get('s1')?.state, 'detached');
+  assert.equal(manager.get('s1')?.sockets.size, 0);
+  fs.rmSync(dir, {recursive: true, force: true});
+});
+
+test('a finished session notifies every attached tab', async () => {
+  const {dir, manager, controller, messages, ws: owner} = fixture();
+  manager.attach('s1', owner);
+  const second = {
     origin: 'https://example.org',
     messages: [],
     send(value) {
       this.messages.push(JSON.parse(value));
     },
   };
-  await controller.query(
-    {
-      requestId: 'q3',
-      origin: 'https://example.org',
-      title: 'Page',
-      windowId: 'window-owner',
-    },
-    reload,
-  );
-  assert.equal(reload.messages.at(-1).busy, undefined);
-  assert.equal(reload.messages.at(-1).session.sessionId, 's1');
-  assert.equal(manager.get('s1')?.ws, reload);
+  manager.attach('s1', second);
+  await controller.finish({sessionId: 's1', result: 'unchanged'});
+  const finish = {type: 'finish', sessionId: 's1', result: 'unchanged'};
+  assert.deepEqual(messages.at(-1), finish);
+  assert.deepEqual(second.messages.at(-1), finish);
+  assert.equal(manager.get('s1'), undefined);
   fs.rmSync(dir, {recursive: true, force: true});
 });

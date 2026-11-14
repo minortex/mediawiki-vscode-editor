@@ -2,7 +2,7 @@
   "name": "mediawiki-vscode-editor",
   "displayName": "%displayName%",
   "description": "%description%",
-  "version": "0.21.0",
+  "version": "0.22.0",
   "publisher": "minortex",
   "license": "GPL-3.0-or-later",
   "engines": {
