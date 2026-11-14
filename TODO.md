@@ -1,5 +1,28 @@
 # TODO
 
+## i18n（英文源，进行中）
+
+### 阶段 1：浏览器插件（已完成）
+
+- [x] 新增 `ipe-plugin/src/i18n.ts`，key 为英文源文本，值为 `zh-cn` 译文（含 `{{ $1 }}` 占位符）。
+- [x] `ipe-plugin/src/index.ts` 的用户可见字符串改为英文源，经 `ctx.i18n.manager.translate()` 取文案。
+- [x] 向 IPE 注册 `zh` / `zh-cn` / `zh-hans` 三个语言别名，避免 MediaWiki 语言码差异导致回退英文。
+- [x] 不翻译：协议消息、MediaWiki 返回正文、`条目` 等 wikitext 参数名、`编辑冲突`/`特殊:` 等用于匹配站点文本的固定串。
+- [x] 验证：57 个源字符串与字典 key 一一对应；`typecheck:ipe`、`build:ipe` 通过（`dist` 含英文源与 `zh-cn` 译文）。
+
+### 阶段 2：扩展贡献点
+
+- [ ] `package.json` 的 9 个命令、8 个配置项、displayName/description 改用 `%key%`。
+- [ ] 新增 `package.nls.json`（英文源）与 `package.nls.zh-cn.json`；key 与英文措辞解耦。
+- [ ] 验证：`@vscode/l10n-dev` 检查、`%key%` 一一对应。
+
+### 阶段 3：扩展运行时与 snippets
+
+- [ ] `package.json` 增加 `"l10n": "./l10n"`；运行时统一 `vscode.l10n.t()`。
+- [ ] 144 处字面量迁移，模板字符串改成 `{0}` 参数形式；生成 `l10n/bundle.l10n.json` 与 `l10n/bundle.l10n.zh-cn.json`。
+- [ ] `language/snippets.ts` 只翻译 label/description，wikitext 片段正文不动。
+- [ ] 脚本检查：除 `zh-cn` 词典外源码不得残留 CJK；伪语言冒烟。
+
 ## 只保留整页编辑（已完成）
 
 - [x] 不再劫持 IPE 的 `quick-edit` 事件：删除模态关闭与 guard CSS，IPE 自带编辑器恢复原生行为（含章节编辑）。

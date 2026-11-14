@@ -4,6 +4,7 @@ import type {
   IWikiPage,
   WatchlistAction,
 } from '@inpageedit/core'
+import {messages} from './i18n'
 
 const WS_URL = 'ws://127.0.0.1:8927'
 const RECONNECT_MS = 5000
@@ -321,6 +322,10 @@ export default {
   name: 'vscode-editor',
   inject: ['toolbox', 'quickUpload', 'templatesUsed', 'quickDiff'],
   apply(ctx: InPageEdit) {
+    const translate = ctx.i18n.manager.translate.bind(ctx.i18n.manager)
+    for (const language of ['zh', 'zh-cn', 'zh-hans']) {
+      ctx.i18n.manager.setLanguageData(language, messages)
+    }
     const API = apiUrl()
     const windowId = (() => {
       try {
@@ -441,7 +446,7 @@ export default {
       const submit = bar.querySelector<HTMLButtonElement>('.mwe-ipe-submit')
       if (submit) submit.disabled = !!session.remoteDirty || !!session.busy
       if (session.remoteDirty) {
-        setStatus('VSCode 里有未保存修改，先保存文件（Ctrl+S）')
+        setStatus(translate('VSCode has unsaved changes; save the file first (Ctrl+S)'))
       }
     }
 
@@ -452,7 +457,7 @@ export default {
       bar.querySelectorAll('button').forEach(button => {
         button.disabled = !!busy
       })
-      if (busy) setStatus('提交中…')
+      if (busy) setStatus(translate('Submitting…'))
     }
 
     function setStatus(text: string, kind?: string): void {
@@ -480,22 +485,22 @@ export default {
       bar = document.createElement('div')
       bar.className = 'mwe-ipe-bar'
       bar.innerHTML =
-        '<span class="mwe-ipe-status">VSCode 编辑中</span>' +
-        '<input type="text" class="mwe-ipe-summary" placeholder="编辑摘要">' +
+        `<span class="mwe-ipe-status">${translate('Editing in VSCode')}</span>` +
+        `<input type="text" class="mwe-ipe-summary" placeholder="${translate('Edit summary')}">` +
         '<select class="mwe-ipe-watchlist">' +
-        '<option value="preferences">遵循 MW 首选</option>' +
-        '<option value="nochange">保持当前状态</option>' +
-        '<option value="watch">添加到监视列表</option>' +
-        '<option value="unwatch">从监视列表移除</option>' +
+        `<option value="preferences">${translate('Follow MediaWiki preference')}</option>` +
+        `<option value="nochange">${translate('Keep current status')}</option>` +
+        `<option value="watch">${translate('Add to watchlist')}</option>` +
+        `<option value="unwatch">${translate('Remove from watchlist')}</option>` +
         '</select>' +
-        '<label><input type="checkbox" class="mwe-ipe-minor"> 小编辑</label>' +
-        '<label><input type="checkbox" class="mwe-ipe-reload" checked> 保存后刷新</label>' +
-        '<button class="mwe-ipe-submit is-primary">提交</button>' +
-        '<button class="mwe-ipe-diff">差异</button>' +
-        '<a class="mwe-ipe-link mwe-ipe-upload">快速上传</a>' +
-        '<a class="mwe-ipe-link mwe-ipe-templates">使用的模板</a>' +
-        '<a class="mwe-ipe-link mwe-ipe-images">使用的图片</a>' +
-        '<button class="mwe-ipe-cancel">取消</button>'
+        `<label><input type="checkbox" class="mwe-ipe-minor"> ${translate('Minor edit')}</label>` +
+        `<label><input type="checkbox" class="mwe-ipe-reload" checked> ${translate('Reload after save')}</label>` +
+        `<button class="mwe-ipe-submit is-primary">${translate('Submit')}</button>` +
+        `<button class="mwe-ipe-diff">${translate('Diff')}</button>` +
+        `<a class="mwe-ipe-link mwe-ipe-upload">${translate('Quick upload')}</a>` +
+        `<a class="mwe-ipe-link mwe-ipe-templates">${translate('Templates used')}</a>` +
+        `<a class="mwe-ipe-link mwe-ipe-images">${translate('Images used')}</a>` +
+        `<button class="mwe-ipe-cancel">${translate('Cancel')}</button>`
       document.body.append(bar)
       attachBarMetrics(bar)
       bar.querySelector('.mwe-ipe-submit')?.addEventListener('click', () => {
@@ -563,7 +568,7 @@ export default {
         })
         .then(data => {
           if (data.error) throw new Error(`${data.error.code}: ${data.error.info}`)
-          if (!data.query) throw new Error('站点没有返回 siteinfo')
+          if (!data.query) throw new Error(translate('The site did not return siteinfo'))
           return data.query
         })
         .finally(() => {
@@ -572,10 +577,14 @@ export default {
     }
 
     function notifyOffline(message?: string, title?: string): void {
-      const text = message || 'VSCode 扩展未连接。请手动打开 VSCode，并确认已安装并启用 MediaWiki 扩展。'
+      const text =
+        message ||
+        translate(
+          'VSCode extension is not connected. Open VSCode and make sure the MediaWiki extension is installed and enabled.',
+        )
       if (ctx.modal?.notify) {
         ctx.modal.notify('warning', {
-          title: title || 'VSCode 未连接',
+          title: title || translate('VSCode not connected'),
           content: text,
           position: 'top right',
           closeAfter: {time: 8000, resetOnHover: true},
@@ -598,17 +607,20 @@ export default {
       link.href = url
       link.target = '_blank'
       link.rel = 'noopener'
-      link.textContent = '打开目标页面'
+      link.textContent = translate('Open target page')
       link.style.cssText = 'color:#36c;text-decoration:underline;cursor:pointer;'
       if (ctx.modal?.notify) {
         ctx.modal.notify('warning', {
-          title: '弹窗被拦截',
+          title: translate('Popup blocked'),
           content: link,
           position: 'top right',
           closeAfter: {time: 10000, resetOnHover: true},
         } as Parameters<typeof ctx.modal.notify>[1])
       } else {
-        notifyOffline('弹窗被拦截，请手动打开目标页面。', '需要打开页面')
+        notifyOffline(
+          translate('The popup was blocked; open the target page manually.'),
+          translate('Page needs to be opened'),
+        )
       }
     }
 
@@ -616,7 +628,7 @@ export default {
       let url: URL
       try {
         const util = getMwUtil()
-        if (!util?.getUrl) throw new Error('mw.util.getUrl 不可用')
+        if (!util?.getUrl) throw new Error(translate('mw.util.getUrl is unavailable'))
         url = new URL(util.getUrl(msg.title), location.href)
       } catch {
         send({type: 'open-result', requestId: msg.requestId, opened: false})
@@ -646,7 +658,7 @@ export default {
           return new Promise<unknown>((resolve, reject) => {
             const timer = window.setTimeout(() => {
               delete registerWaiters[requestId]
-              reject(new Error('扩展未响应站点注册'))
+              reject(new Error(translate('Extension did not respond to site registration')))
             }, 15000)
             registerWaiters[requestId] = {resolve, reject, timer, query}
             send({
@@ -677,7 +689,7 @@ export default {
       clearTimeout(waiter.timer)
       delete registerWaiters[msg.requestId]
       if (msg.ok) waiter.resolve(waiter.query)
-      else waiter.reject(new Error(msg.error || '站点注册失败'))
+      else waiter.reject(new Error(msg.error || translate('Site registration failed')))
     }
 
     function connect(): void {
@@ -716,15 +728,16 @@ export default {
               return
             }
           } catch (error) {
-            status(
-              `站点注册失败：${error instanceof Error ? error.message : String(error)}`,
-              'error',
-            )
+            const detail = error instanceof Error ? error.message : String(error)
+            status(translate('Site registration failed: {{ $1 }}', detail), 'error')
           }
           if (session) {
             restorePage()
             endSession()
-            notifyOffline('扩展没有该会话，已退出编辑态。', '会话已结束')
+            notifyOffline(
+              translate('The extension no longer has this session; editing has been closed.'),
+              translate('Session ended'),
+            )
             return
           }
           startPendingAutoEdit()
@@ -792,7 +805,7 @@ export default {
             if (!moved && msg.template) highlightTemplate(msg.template)
           }
         } else if (msg.type === 'save') {
-          setStatus('正在提交…')
+          setStatus(translate('Submitting…'))
           void saveEdit(msg.text, msg.summary, msg.minor, msg.requestId)
         } else if (msg.type === 'finish') {
           if (msg.result === 'closed') restorePage()
@@ -802,11 +815,14 @@ export default {
           restorePage()
           endSession()
           closeIfOpenedHere()
-          notifyOffline('已退出编辑状态。', '编辑器已关闭')
+          notifyOffline(translate('Exited editing mode.'), translate('Editor closed'))
         } else if (msg.type === 'preempted') {
           restorePage()
           endSession()
-          notifyOffline('已在另一个标签继续编辑。', '会话已转移')
+          notifyOffline(
+            translate('Editing continued in another tab.'),
+            translate('Session transferred'),
+          )
         }
       })
     }
@@ -1251,7 +1267,8 @@ export default {
         })
       } catch (error) {
         if (seq === previewSeq) {
-          status(`预览失败：${error instanceof Error ? error.message : String(error)}`)
+          const detail = error instanceof Error ? error.message : String(error)
+          status(translate('Preview failed: {{ $1 }}', detail))
         }
         return false
       }
@@ -1259,8 +1276,10 @@ export default {
       applyFull(data.parse.text)
       setStatus(
         session.conflict
-          ? '检测到编辑冲突，已载入冲突标记；处理后再提交'
-          : `预览已更新 ${new Date().toLocaleTimeString()}`,
+          ? translate(
+              'Edit conflict detected; conflict markers are loaded. Resolve them before submitting.',
+            )
+          : translate('Preview updated at {{ $1 }}', new Date().toLocaleTimeString()),
         session.conflict ? 'error' : undefined,
       )
       return true
@@ -1307,7 +1326,7 @@ export default {
       sessionQueryPromise = new Promise<SessionQueryResult>((resolve, reject) => {
         const timer = window.setTimeout(() => {
           delete sessionWaiters[requestId]
-          reject(new Error('扩展未响应会话查询'))
+          reject(new Error(translate('Extension did not respond to the session query')))
         }, 8000)
         sessionWaiters[requestId] = {resolve, reject, timer}
         if (!send({
@@ -1319,7 +1338,7 @@ export default {
         })) {
           clearTimeout(timer)
           delete sessionWaiters[requestId]
-          reject(new Error('扩展未连接'))
+          reject(new Error(translate('Extension not connected')))
         }
       }).catch(error => {
         sessionQueryPromise = null
@@ -1333,7 +1352,7 @@ export default {
       if (!waiter) return
       clearTimeout(waiter.timer)
       delete sessionWaiters[msg.requestId]
-      if (!msg.ok) waiter.reject(new Error(msg.error || '会话查询失败'))
+      if (!msg.ok) waiter.reject(new Error(msg.error || translate('Session query failed')))
       else waiter.resolve({session: msg.session || null, busy: !!msg.busy})
     }
 
@@ -1345,7 +1364,8 @@ export default {
           ? await ctx.wikiPage.newFromRevision(info.revid)
           : await ctx.wikiPage.newFromTitle(info.title, false)
       } catch (error) {
-        status(`恢复会话失败：${error instanceof Error ? error.message : String(error)}`, 'error')
+        const detail = error instanceof Error ? error.message : String(error)
+        status(translate('Failed to resume the session: {{ $1 }}', detail), 'error')
         return
       }
       session = {
@@ -1360,7 +1380,7 @@ export default {
       }
       showBar(null)
       document.body.classList.remove('ipe-modal-no-scroll')
-      setStatus('已恢复 VSCode 编辑会话')
+      setStatus(translate('Resumed the VSCode editing session'))
       schedulePreview()
     }
 
@@ -1380,8 +1400,10 @@ export default {
         const existing = await queryExistingSession(true)
         if (existing.busy) {
           notifyOffline(
-            '该页面已经在另一个浏览器窗口或 VSCode 编辑会话中。请先关闭那边的编辑会话后再试。',
-            '页面已在编辑中',
+            translate(
+              'This page is already being edited in another browser window or VSCode session. Close that session first.',
+            ),
+            translate('Page already being edited'),
           )
           return
         }
@@ -1390,7 +1412,7 @@ export default {
           return
         }
         const title = getMwConfig<string>('wgPageName')
-        if (!title) throw new Error('无法读取当前页面标题')
+        if (!title) throw new Error(translate('Unable to read the current page title'))
         const wikiPage = await ctx.wikiPage.newFromTitle(title, false)
         const revision = wikiPage.revisions[0]
         session = {
@@ -1405,7 +1427,7 @@ export default {
         }
         showBar(null)
         document.body.classList.remove('ipe-modal-no-scroll')
-        setStatus('VSCode 编辑中，保存文件即刷新预览')
+        setStatus(translate('Editing in VSCode; save the file to refresh the preview'))
         send({
           type: 'open',
           sessionId: session.id,
@@ -1418,11 +1440,13 @@ export default {
           wiki: location.origin,
         })
       } catch (error) {
-        const message = `启动编辑失败：${
-          error instanceof Error ? error.message : String(error)
-        }。请确认 VSCode 扩展已启动并已更新网页端脚本。`
+        const detail = error instanceof Error ? error.message : String(error)
+        const message = translate(
+          'Failed to start editing: {{ $1 }}. Make sure the VSCode extension is running and the web plugin is up to date.',
+          detail,
+        )
         status(message, 'error')
-        notifyOffline(message, '启动编辑失败')
+        notifyOffline(message, translate('Failed to start editing'))
       }
     }
 
@@ -1436,7 +1460,7 @@ export default {
           const images = data.parse?.images || []
           const box = document.createElement('div')
           if (!images.length) {
-            box.textContent = '没有使用的图片。'
+            box.textContent = translate('No images are used.')
           } else {
             const list = document.createElement('ol')
             for (const title of images) {
@@ -1453,7 +1477,7 @@ export default {
             box.append(list)
           }
           ctx.modal?.show({
-            title: '使用的图片',
+            title: translate('Images used'),
             content: box,
             sizeClass: 'dialog',
             draggable: true,
@@ -1469,8 +1493,8 @@ export default {
         pending &&
         !confirm(
           session.remoteDirty
-            ? 'VSCode 里还有未保存的修改，放弃并关闭编辑器？'
-            : '还有未提交到站点的修改，确定放弃？',
+            ? translate('VSCode still has unsaved changes. Discard them and close the editor?')
+            : translate('There are changes not yet saved to the site. Discard them?'),
         )
       ) {
         return
@@ -1495,7 +1519,7 @@ export default {
     function requestSave(bar: HTMLDivElement): void {
       if (!session) return
       if (session.remoteDirty) {
-        setStatus('VSCode 里有未保存修改，先保存文件（Ctrl+S）', 'error')
+        setStatus(translate('VSCode has unsaved changes; save the file first (Ctrl+S)'), 'error')
         return
       }
       setBusy(true)
@@ -1505,7 +1529,7 @@ export default {
       const reloadInput = bar.querySelector<HTMLInputElement>('.mwe-ipe-reload')
       session.watchlist = parseWatchlist(watchInput?.value || 'nochange')
       session.reload = !!reloadInput?.checked
-      setStatus('正在保存文件…')
+      setStatus(translate('Saving the file…'))
       send({
         type: 'request-save',
         sessionId: session.id,
@@ -1549,7 +1573,12 @@ export default {
         remoteTimestamp: revision.timestamp,
         message,
       })
-      setStatus('检测到编辑冲突，已载入冲突标记；处理后再提交', 'error')
+      setStatus(
+        translate(
+          'Edit conflict detected; conflict markers are loaded. Resolve them before submitting.',
+        ),
+        'error',
+      )
       return true
     }
 
@@ -1575,7 +1604,7 @@ export default {
           latest
         ) {
           setBusy(false)
-          reportConflict(latest, '页面已被其他人修改。')
+          reportConflict(latest, translate('The page was changed by someone else.'))
           send({type: 'save-result', sessionId, requestId, ok: false, error: '编辑冲突'})
           return
         }
@@ -1599,17 +1628,22 @@ export default {
           minor: !!minor,
         })
         if (session.reload !== false) {
-          setStatus('已保存，正在刷新并等待确认…', 'ok')
+          setStatus(translate('Saved; reloading and waiting for confirmation…'), 'ok')
           setBusy(false)
           window.setTimeout(() => location.reload(), 800)
           return
         }
         const shown = await renderPreview()
         if (shown) {
-          setStatus('已保存，新内容已显示', 'ok')
+          setStatus(translate('Saved; the new content is now shown'), 'ok')
           sendPendingConfirm()
         } else {
-          setStatus('已保存，但未能确认新内容；临时文件保留，刷新页面后会再次确认', 'error')
+          setStatus(
+            translate(
+              'Saved, but the new content could not be confirmed. The temp file is kept and will be confirmed after the page reloads.',
+            ),
+            'error',
+          )
         }
         setBusy(false)
         endSession()
@@ -1625,7 +1659,7 @@ export default {
           } catch {}
         }
         if (!conflictSent) {
-          setStatus(`保存失败：${message}`, 'error')
+          setStatus(translate('Save failed: {{ $1 }}', message), 'error')
         }
       }
     }
@@ -1680,7 +1714,7 @@ export default {
       id: editButtonId,
       group: 'group1',
       icon: createEditIcon(),
-      tooltip: '在 VSCode 中编辑整页',
+      tooltip: translate('Edit the whole page in VSCode'),
       onClick: () => {
         void beginPageEdit()
       },
