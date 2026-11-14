@@ -1,7 +1,7 @@
 {
   "name": "mediawiki-vscode-editor",
-  "displayName": "MediaWiki ⇄ VSCode External Editor",
-  "description": "Edit MediaWiki pages in VSCode; the browser previews on save and performs the edit",
+  "displayName": "%displayName%",
+  "description": "%description%",
   "version": "0.20.1",
   "publisher": "minortex",
   "license": "GPL-3.0-or-later",
@@ -20,86 +20,86 @@
     "commands": [
       {
         "command": "mediawikiEditor.push",
-        "title": "MediaWiki: 立即推送当前文件预览"
+        "title": "%command.push.title%"
       },
       {
         "command": "mediawikiEditor.status",
-        "title": "MediaWiki: 显示连接状态"
+        "title": "%command.status.title%"
       },
       {
         "command": "mediawikiEditor.save",
-        "title": "MediaWiki: 通过 InPageEdit 保存当前文件",
+        "title": "%command.save.title%",
         "icon": "$(cloud-upload)"
       },
       {
         "command": "mediawikiEditor.check",
-        "title": "MediaWiki: 重新检查当前文件"
+        "title": "%command.check.title%"
       },
       {
         "command": "mediawikiEditor.removeWiki",
-        "title": "MediaWiki: 删除 wiki"
+        "title": "%command.removeWiki.title%"
       },
       {
         "command": "mediawikiEditor.listWikis",
-        "title": "MediaWiki: 列出已添加的 wiki"
+        "title": "%command.listWikis.title%"
       },
       {
         "command": "mediawikiEditor.openPage",
-        "title": "MediaWiki: 在浏览器中打开当前条目",
+        "title": "%command.openPage.title%",
         "icon": "$(link-external)"
       },
       {
         "command": "mediawikiEditor.closeSession",
-        "title": "MediaWiki: 关闭当前编辑会话",
+        "title": "%command.closeSession.title%",
         "icon": "$(debug-disconnect)"
       },
       {
         "command": "mediawikiEditor.restoreDraft",
-        "title": "MediaWiki: 恢复编辑草稿"
+        "title": "%command.restoreDraft.title%"
       }
     ],
     "configuration": {
-      "title": "MediaWiki External Editor",
+      "title": "%config.title%",
       "properties": {
         "mediawikiEditor.port": {
           "type": "number",
           "default": 8927,
-          "description": "本地 WebSocket 端口，需与用户脚本中的 WS_URL 一致。"
+          "description": "%config.port.description%"
         },
         "mediawikiEditor.tempDir": {
           "type": "string",
           "default": "",
-          "description": "源码落盘目录。留空则使用用户缓存目录：$XDG_CACHE_HOME/mediawiki-edit（Linux）、~/Library/Caches/mediawiki-edit（macOS）、%LOCALAPPDATA%\\mediawiki-edit（Windows）。"
+          "description": "%config.tempDir.description%"
         },
         "mediawikiEditor.allowedOrigin": {
           "type": "string",
           "default": "*",
-          "description": "允许连接的浏览器来源；`*` 表示不限制，也可填单个 origin（如 https://example.org）。"
+          "description": "%config.allowedOrigin.description%"
         },
         "mediawikiEditor.languageFeatures": {
           "type": "boolean",
           "default": true,
-          "description": "为编辑会话启用内建语言功能（诊断、折叠、补全、跳转等）。"
+          "description": "%config.languageFeatures.description%"
         },
         "mediawikiEditor.diagnosticsWarnings": {
           "type": "boolean",
           "default": false,
-          "description": "诊断中是否包含警告；关闭时只显示错误。"
+          "description": "%config.diagnosticsWarnings.description%"
         },
         "mediawikiEditor.diagnosticsDelay": {
           "type": "number",
           "default": 400,
-          "description": "停止输入后等待多少毫秒再执行诊断。"
+          "description": "%config.diagnosticsDelay.description%"
         },
         "mediawikiEditor.diagnosticsMaxLength": {
           "type": "number",
           "default": 100000,
-          "description": "超过该字符数的文档不自动诊断、不生成语义高亮；设为 0 表示不限制。"
+          "description": "%config.diagnosticsMaxLength.description%"
         },
         "mediawikiEditor.parserConfig": {
           "type": "string",
           "default": "",
-          "description": "解析配置 JSON 的绝对路径或相对工作区路径；留空使用内置默认解析配置。"
+          "description": "%config.parserConfig.description%"
         }
       }
     },

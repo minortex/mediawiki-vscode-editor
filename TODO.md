@@ -10,11 +10,11 @@
 - [x] 不翻译：协议消息、MediaWiki 返回正文、`条目` 等 wikitext 参数名、`编辑冲突`/`特殊:` 等用于匹配站点文本的固定串。
 - [x] 验证：57 个源字符串与字典 key 一一对应；`typecheck:ipe`、`build:ipe` 通过（`dist` 含英文源与 `zh-cn` 译文）。
 
-### 阶段 2：扩展贡献点
+### 阶段 2：扩展贡献点（已完成）
 
-- [ ] `package.json` 的 9 个命令、8 个配置项、displayName/description 改用 `%key%`。
-- [ ] 新增 `package.nls.json`（英文源）与 `package.nls.zh-cn.json`；key 与英文措辞解耦。
-- [ ] 验证：`@vscode/l10n-dev` 检查、`%key%` 一一对应。
+- [x] `package.json` 的 9 个命令、8 个配置项、displayName/description 改用 `%key%`。
+- [x] 新增 `package.nls.json`（英文源）与 `package.nls.zh-cn.json`；key 与英文措辞解耦。
+- [x] 验证：20 个 `%key%` 与两份 nls 完全对应（无缺失、无多余、无键差异）；JSON 解析通过。
 
 ### 阶段 3：扩展运行时与 snippets
 

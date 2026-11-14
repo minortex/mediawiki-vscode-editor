@@ -1,0 +1,22 @@
+{
+  "displayName": "MediaWiki ⇄ VSCode External Editor",
+  "description": "Edit MediaWiki pages in VSCode; the browser previews on save and performs the edit",
+  "command.push.title": "MediaWiki: Push current file preview now",
+  "command.status.title": "MediaWiki: Show connection status",
+  "command.save.title": "MediaWiki: Save current file via InPageEdit",
+  "command.check.title": "MediaWiki: Re-check current file",
+  "command.removeWiki.title": "MediaWiki: Remove wiki",
+  "command.listWikis.title": "MediaWiki: List added wikis",
+  "command.openPage.title": "MediaWiki: Open current page in browser",
+  "command.closeSession.title": "MediaWiki: Close current editing session",
+  "command.restoreDraft.title": "MediaWiki: Restore editing draft",
+  "config.title": "MediaWiki External Editor",
+  "config.port.description": "Local WebSocket port; must match WS_URL in the userscript.",
+  "config.tempDir.description": "Directory for source files. Leave empty to use the user cache directory: $XDG_CACHE_HOME/mediawiki-edit (Linux), ~/Library/Caches/mediawiki-edit (macOS), %LOCALAPPDATA%\\mediawiki-edit (Windows).",
+  "config.allowedOrigin.description": "Allowed browser origin; `*` means any origin, or a single origin such as https://example.org.",
+  "config.languageFeatures.description": "Enable built-in language features for editing sessions (diagnostics, folding, completion, navigation, etc.).",
+  "config.diagnosticsWarnings.description": "Include warnings in diagnostics; when off, only errors are shown.",
+  "config.diagnosticsDelay.description": "Milliseconds to wait after typing stops before running diagnostics.",
+  "config.diagnosticsMaxLength.description": "Documents longer than this many characters are not diagnosed or semantically highlighted automatically; 0 means no limit.",
+  "config.parserConfig.description": "Absolute or workspace-relative path to a parser config JSON; leave empty to use the built-in default."
+}

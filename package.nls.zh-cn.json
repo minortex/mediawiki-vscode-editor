@@ -1,0 +1,22 @@
+{
+  "displayName": "MediaWiki ⇄ VSCode External Editor",
+  "description": "在 VSCode 中编辑 MediaWiki 页面，保存时由浏览器预览并执行编辑",
+  "command.push.title": "MediaWiki: 立即推送当前文件预览",
+  "command.status.title": "MediaWiki: 显示连接状态",
+  "command.save.title": "MediaWiki: 通过 InPageEdit 保存当前文件",
+  "command.check.title": "MediaWiki: 重新检查当前文件",
+  "command.removeWiki.title": "MediaWiki: 删除 wiki",
+  "command.listWikis.title": "MediaWiki: 列出已添加的 wiki",
+  "command.openPage.title": "MediaWiki: 在浏览器中打开当前条目",
+  "command.closeSession.title": "MediaWiki: 关闭当前编辑会话",
+  "command.restoreDraft.title": "MediaWiki: 恢复编辑草稿",
+  "config.title": "MediaWiki External Editor",
+  "config.port.description": "本地 WebSocket 端口，需与用户脚本中的 WS_URL 一致。",
+  "config.tempDir.description": "源码落盘目录。留空则使用用户缓存目录：$XDG_CACHE_HOME/mediawiki-edit（Linux）、~/Library/Caches/mediawiki-edit（macOS）、%LOCALAPPDATA%\\mediawiki-edit（Windows）。",
+  "config.allowedOrigin.description": "允许连接的浏览器来源；`*` 表示不限制，也可填单个 origin（如 https://example.org）。",
+  "config.languageFeatures.description": "为编辑会话启用内建语言功能（诊断、折叠、补全、跳转等）。",
+  "config.diagnosticsWarnings.description": "诊断中是否包含警告；关闭时只显示错误。",
+  "config.diagnosticsDelay.description": "停止输入后等待多少毫秒再执行诊断。",
+  "config.diagnosticsMaxLength.description": "超过该字符数的文档不自动诊断、不生成语义高亮；设为 0 表示不限制。",
+  "config.parserConfig.description": "解析配置 JSON 的绝对路径或相对工作区路径；留空使用内置默认解析配置。"
+}
