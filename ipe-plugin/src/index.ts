@@ -800,12 +800,11 @@ export default {
         } else if (msg.type === 'finish') {
           if (msg.result === 'closed') restorePage()
           endSession()
-          if (window.name.indexOf('mwe-edit:') === 0 && msg.result !== 'closed') {
-            window.setTimeout(() => window.close(), 50)
-          }
+          if (msg.result !== 'closed') closeIfOpenedHere()
         } else if (msg.type === 'editor-closed') {
           restorePage()
           endSession()
+          closeIfOpenedHere()
           notifyOffline('已退出编辑状态。', '编辑器已关闭')
         } else if (msg.type === 'preempted') {
           restorePage()
@@ -1288,6 +1287,13 @@ export default {
       document.body.classList.remove('mwe-ipe-editing')
     }
 
+    /** Only tabs opened by the extension for editing can be closed by script. */
+    function closeIfOpenedHere(): void {
+      if (window.name.indexOf('mwe-edit:') === 0) {
+        window.setTimeout(() => window.close(), 50)
+      }
+    }
+
     function queryExistingSession(force = false): Promise<SessionQueryResult> {
       if (!force && sessionQueryPromise) return sessionQueryPromise
       if (!connected) return Promise.resolve({session: null, busy: false})
@@ -1470,6 +1476,7 @@ export default {
       })
       restorePage()
       endSession()
+      closeIfOpenedHere()
     }
 
     function showBar(modal: IPEModal | null): void {
