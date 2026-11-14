@@ -603,7 +603,7 @@ function activate(context: vscode.ExtensionContext): void {
           );
           const itemIndex = itemsUtil.itemAt(items, offset);
           const item = itemIndex >= 0 ? items[itemIndex] : undefined;
-          const exact = !!item && item.start <= offset && item.end >= offset;
+          const exact = !!item && item.start <= offset && item.end > offset;
           if (!exact) {
             const target = templateTargetAt(
               doc,

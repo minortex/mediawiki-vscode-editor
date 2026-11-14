@@ -971,8 +971,10 @@ export default {
         '.cq-quote',
         '[class*="quote"]',
         '[class*="box"]',
+        '.pm-card',
       ].join(',')
       const name = compactText(target.name)
+      const entry = compactText(target.params?.['条目'] || '')
       const params = Object.values(target.params)
         .map(compactText)
         .filter(value => value.length >= 2)
@@ -981,8 +983,10 @@ export default {
         score: number
         titleMatch: boolean
         textMatch: boolean
+        entryMatch: boolean
         navbox: boolean
       }> = []
+      const entryMatches: typeof scored = []
       const titleMatches: typeof scored = []
       const textMatches: typeof scored = []
       for (const element of root.querySelectorAll(selector)) {
@@ -992,9 +996,15 @@ export default {
         const title = blockTitle(element)
         const titleMatch = Boolean(name && title.includes(name))
         const textMatch = Boolean(name && text.includes(name))
+        const entryMatch =
+          Boolean(entry) &&
+          element.matches('.pm-card') &&
+          compactText(element.querySelector('.pm-title, .pm-title-txt')?.textContent || '') ===
+            entry
         let score = 0
         if (titleMatch) score += 200
         else if (textMatch) score += 80
+        if (entryMatch) score += 300
         const matchedParams = params.filter(value => text.includes(value)).length
         score += Math.min(8, matchedParams) * 10
         const navbox = element.matches('table.navbox, .navbox')
@@ -1002,15 +1012,20 @@ export default {
         if (element.matches('.infobox, .infoBox')) score += 15
         if (text.length > 100) score += 5
         if (score >= 60) {
-          const candidate = {element, score, titleMatch, textMatch, navbox}
+          const candidate = {element, score, titleMatch, textMatch, entryMatch, navbox}
           scored.push(candidate)
+          if (entryMatch) entryMatches.push(candidate)
           if (titleMatch) titleMatches.push(candidate)
           if (textMatch) textMatches.push(candidate)
         }
       }
       // 模板名出现在多个块时，标题匹配才是真正的模板块；
       // 只有标题缺失时才退回正文匹配，避免参数值命中无关的导航盒。
-      let pool = titleMatches.length ? titleMatches : textMatches
+      let pool = entryMatches.length
+        ? entryMatches
+        : titleMatches.length
+          ? titleMatches
+          : textMatches
       if (!pool.length) {
         pool = scored.filter(item => !item.navbox)
       }

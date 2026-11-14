@@ -31,6 +31,7 @@ export function compactName(value: string): string {
 function nodeText(node: AstIndexNode): string {
   return node.token
     .toString()
+    .trim()
     .replace(/^=+|=+$/g, '')
     .replace(/\[\[(?:[^\]|]*\|)?([^\]]+)\]\]/g, '$1')
     .replace(/[{}]/g, '')
