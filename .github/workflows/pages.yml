@@ -13,10 +13,12 @@ on:
       - 'ipe-v*'
   workflow_dispatch:
 
+# Publishing goes through the gh-pages branch instead of actions/deploy-pages:
+# Pages orders workflow deployments by commit and ignores one whose build
+# version is not newer than the current site, so a tag pushed after its commit
+# could never replace the stale main-push deployment.
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
   group: pages
@@ -73,6 +75,7 @@ jobs:
           cp -R "$RUNNER_TEMP/ipe-stable/ipe-plugin/dist" _site/ipe-plugin/dist
           cp "$RUNNER_TEMP/ipe-dev/ipe-plugin/registry.json" _site/ipe-plugin/dev/registry.json
           cp -R "$RUNNER_TEMP/ipe-dev/ipe-plugin/dist" _site/ipe-plugin/dev/dist
+          touch _site/.nojekyll
           node - <<'NODE'
           const fs = require('node:fs');
           const file = '_site/ipe-plugin/dev/registry.json';
@@ -81,16 +84,16 @@ jobs:
           fs.writeFileSync(file, `${JSON.stringify(registry, null, 2)}\n`);
           NODE
 
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: _site
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Publish to gh-pages
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          cd _site
+          git init -q
+          git checkout -q -b gh-pages
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -q -m "deploy: ${GITHUB_SHA}"
+          git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push --force origin gh-pages
