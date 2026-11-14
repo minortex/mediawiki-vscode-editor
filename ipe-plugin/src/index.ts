@@ -838,7 +838,7 @@ export default {
         } else if (msg.type === 'editor-closed') {
           restorePage()
           endSession()
-          notifyOffline('编辑器已关闭，草稿已保留。', '编辑器已关闭')
+          notifyOffline('已退出编辑状态。', '编辑器已关闭')
         } else if (msg.type === 'preempted') {
           restorePage()
           endSession()
