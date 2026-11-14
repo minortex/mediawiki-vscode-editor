@@ -1,5 +1,13 @@
 # TODO
 
+## 会话元数据持久化加固（待办）
+
+- [x] `deactivate()` 改为 `async`，`persist()` 后 `await flush()`，正常退出/重载前等待写盘队列。
+- [x] 启动时清理孤儿：新增 `src/sessions/temps.ts` 的 `removeOrphanTemps()`，只删匹配 `<title>.<yyyyMMdd-HHmmss>.wiki` 且未被任何会话引用、mtime 超过 60 秒的文件，避免与正在注册的会话竞争。
+- [x] 写入加 `fsync`：`SessionStore.save()` 用 `FileHandle.writeFile + sync`，`rename` 后再尽力 `fsync` 目录；失败静默降级。
+- [x] `closePageOnConfirm` 已持久化（`StoredSession` 新字段，load/serialize 双向保留）。
+- [x] `kill -9` 窗口：`load()` 丢弃文件已删条目、强制 `draft`、清除 `awaitingConfirm`，再由文档是否存在推导 `detached`/`draft`；已有测试覆盖（含 `closePageOnConfirm` 恢复）。
+
 ## 补全开发进度（2026-11-11）
 
 ### P0 自动闭合修复（已完成）

@@ -18,6 +18,8 @@ export interface StoredSession {
   autoRestore: boolean;
   awaitingConfirm?: boolean;
   originalHash?: string;
+  /** Close the browser page after the save is confirmed. */
+  closePageOnConfirm?: boolean;
 }
 
 export class SessionStore {
@@ -56,8 +58,23 @@ export class SessionStore {
       .then(async () => {
         await fs.promises.mkdir(path.dirname(file), {recursive: true});
         const tmp = `${file}.tmp`;
-        await fs.promises.writeFile(tmp, data, 'utf8');
+        const handle = await fs.promises.open(tmp, 'w');
+        try {
+          await handle.writeFile(data, 'utf8');
+          await handle.sync();
+        } finally {
+          await handle.close();
+        }
         await fs.promises.rename(tmp, file);
+        // Best effort: persist the rename itself on filesystems that need it.
+        try {
+          const dir = await fs.promises.open(path.dirname(file), 'r');
+          try {
+            await dir.sync();
+          } finally {
+            await dir.close();
+          }
+        } catch {}
       })
       .catch(() => {});
   }

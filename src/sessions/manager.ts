@@ -51,6 +51,7 @@ export class SessionManager {
         // file as a restorable draft instead of an invisible session.
         awaitingConfirm: false,
         originalHash: entry.originalHash,
+        closePageOnConfirm: entry.closePageOnConfirm === true,
       };
       this.sessions.set(entry.sessionId, meta);
       this.byPath.set(meta.fsPath, entry.sessionId);
@@ -82,6 +83,7 @@ export class SessionManager {
       autoRestore: meta.autoRestore,
       awaitingConfirm: meta.awaitingConfirm,
       originalHash: meta.originalHash,
+      closePageOnConfirm: meta.closePageOnConfirm,
     };
   }
 

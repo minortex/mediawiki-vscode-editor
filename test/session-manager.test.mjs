@@ -107,3 +107,58 @@ test('a pending save confirmation becomes a restorable draft after a restart', a
   reloaded.remove('s1');
   fs.rmSync(dir, {recursive: true, force: true});
 });
+
+test('loading drops sessions whose temp file is gone', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'session-manager-missing-'));
+  const file = path.join(dir, 'sessions.json');
+  const existing = path.join(dir, 'keep.wiki');
+  fs.writeFileSync(existing, 'text');
+  const base = {
+    title: 'Page',
+    section: null,
+    wiki: {id: 'example.org', name: 'Example', origin: 'https://example.org'},
+    created: 1,
+    state: 'draft',
+    autoRestore: true,
+  };
+  fs.writeFileSync(
+    file,
+    JSON.stringify([
+      {sessionId: 'keep', fsPath: existing, ...base},
+      {sessionId: 'gone', fsPath: path.join(dir, 'gone.wiki'), ...base},
+    ]),
+  );
+  assert.deepEqual(
+    new SessionStore(file).load().map(entry => entry.sessionId),
+    ['keep'],
+  );
+  fs.rmSync(dir, {recursive: true, force: true});
+});
+
+test('closePageOnConfirm survives a restart', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'session-manager-confirm-'));
+  const file = path.join(dir, 'sessions.json');
+  const temp = path.join(dir, 'page.wiki');
+  fs.writeFileSync(temp, 'text');
+  const manager = new SessionManager(new SessionStore(file));
+  manager.add('s1', {
+    fsPath: temp,
+    ws: null,
+    title: 'Page',
+    section: null,
+    wiki: {id: 'example.org', name: 'Example', origin: 'https://example.org'},
+    created: 1,
+    state: 'attached',
+    autoRestore: true,
+  });
+  manager.get('s1').closePageOnConfirm = true;
+  manager.markAwaitingConfirm('s1');
+  await manager.flush();
+
+  const reloaded = new SessionManager(new SessionStore(file));
+  reloaded.load();
+  assert.equal(reloaded.get('s1')?.closePageOnConfirm, true);
+  assert.equal(reloaded.get('s1')?.state, 'draft');
+  assert.equal(reloaded.get('s1')?.awaitingConfirm, false);
+  fs.rmSync(dir, {recursive: true, force: true});
+});

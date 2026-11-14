@@ -10,6 +10,7 @@ import {registerLanguageFeatures, type LanguageFeatures} from './language/featur
 import * as wikis from './wiki/registry';
 import {SessionStore} from './sessions/store';
 import {SessionManager, type SessionMeta} from './sessions/manager';
+import {removeOrphanTemps} from './sessions/temps';
 import {createSessionController, type SessionController} from './sessions/controller';
 import type {BrowserMessage, LocateMessage} from './protocol';
 
@@ -339,6 +340,10 @@ function activate(context: vscode.ExtensionContext): void {
   sessionManager.load();
   syncRestoredSessions();
   setTimeout(syncRestoredSessions, 2000).unref();
+  void removeOrphanTemps(
+    config().get<string>('tempDir') || defaultDir(),
+    sessionManager.values().map(meta => meta.fsPath),
+  ).catch(() => {});
   sessionController = createSessionController({
     sessionManager,
     getBridge: () => bridge ?? undefined,
@@ -665,8 +670,9 @@ function activate(context: vscode.ExtensionContext): void {
   );
 }
 
-function deactivate(): void {
+async function deactivate(): Promise<void> {
   sessionManager?.persist();
+  await sessionManager?.flush();
   languageFeatures?.dispose();
   languageFeatures = null;
   bridge?.stop();
