@@ -17,7 +17,7 @@ test('builds a snippet for #if', () => {
 test('builds a multi-line switch skeleton', () => {
   assert.equal(
     functionSnippet('#switch', config),
-    '#switch:${1:comparison string}\n|${2:case}=${3:result}\n|#default=${4:默认}\n',
+    '#switch:${1:comparison string}\n|${2:case}=${3:result}\n|#default=${4:default}\n',
   );
 });
 

@@ -56,7 +56,7 @@ export function functionSnippet(
   if (!signature || signature.length === 0) return undefined;
   const head = /[:：]$/u.test(label) ? label : label + colon;
   if (canonical.toLowerCase() === 'switch') {
-    return `${head}\${1:${signature[0].label}}\n|\${2:case}=\${3:result}\n|#default=\${4:默认}\n`;
+    return `${head}\${1:${signature[0].label}}\n|\${2:case}=\${3:result}\n|#default=\${4:default}\n`;
   }
   const params = signature.map(
     (parameter, index) => `\${${index + 1}:${parameter.label}}`,

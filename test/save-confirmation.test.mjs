@@ -22,9 +22,12 @@ class Range {
 }
 const vscodeMock = {
   workspace: {textDocuments: [], applyEdit: async () => true},
+  l10n: {t: (message, ...args) =>
+    message.replace(/\{(\d+)\}/g, (_, i) => args[i] ?? '')},
   window: {
     setStatusBarMessage() {},
     showWarningMessage() {},
+    showInformationMessage() {},
     showErrorMessage() {},
     showTextDocument: async () => undefined,
   },
@@ -185,9 +188,9 @@ test('an edit conflict writes git-style markers into the open document', async (
     remoteTimestamp: '2026-11-10T00:00:00Z',
   });
   assert.ok(applied);
-  assert.match(applied.text, /<<<<<<< VSCode 本地版本/);
+  assert.match(applied.text, /<<<<<<< VSCode local version/);
   assert.match(applied.text, /=======/);
-  assert.match(applied.text, />>>>>>> 站点最新版本（rev 42）/);
+  assert.match(applied.text, />>>>>>> Site latest revision \(rev 42\)/);
   assert.match(applied.text, /本地内容/);
   assert.match(applied.text, /远端内容/);
   assert.equal(manager.get('s1')?.revid, 42);

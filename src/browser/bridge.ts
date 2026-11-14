@@ -7,6 +7,7 @@ import type {
 import {startWsServer, type SocketLike} from './server';
 import type {WebSocketServer} from 'ws';
 import type {IncomingMessage} from 'node:http';
+import {l10n} from 'vscode';
 
 type OutgoingRequest = Omit<NavigateEditMessage, 'requestId'> | Omit<SaveMessage, 'requestId'>;
 
@@ -50,7 +51,7 @@ export class BrowserBridge {
   stop(): void {
     for (const pending of this.pending.values()) {
       clearTimeout(pending.timer);
-      pending.reject(new Error('浏览器连接已关闭'));
+      pending.reject(new Error(l10n.t('Browser connection closed')));
     }
     this.pending.clear();
     try {
@@ -86,7 +87,7 @@ export class BrowserBridge {
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(requestId);
-        reject(new Error('浏览器未响应请求'));
+        reject(new Error(l10n.t('The browser did not respond to the request')));
       }, timeoutMs);
       this.pending.set(requestId, {
         resolve: value => resolve(value as T),
@@ -96,7 +97,7 @@ export class BrowserBridge {
       if (!this.send(ws, {...message, requestId} as ExtensionMessage)) {
         clearTimeout(timer);
         this.pending.delete(requestId);
-        reject(new Error('浏览器未连接'));
+        reject(new Error(l10n.t('Browser is not connected')));
       }
     });
   }
@@ -110,7 +111,7 @@ export class BrowserBridge {
     if ('ok' in msg && msg.ok === false) {
       const error = 'error' in msg && typeof msg.error === 'string'
         ? msg.error
-        : '浏览器请求失败';
+        : l10n.t('Browser request failed');
       pending.reject(new Error(error));
     } else {
       pending.resolve(msg);

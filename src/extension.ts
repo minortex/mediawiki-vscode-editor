@@ -83,9 +83,9 @@ function updateStatus(): void {
   if (!statusBar) return;
   const connected = bridge?.connectionCount || 0;
   statusBar.text = connected
-    ? '$(vm-active) MediaWiki: 已连接'
-    : '$(vm-outline) MediaWiki: 等待浏览器';
-  statusBar.tooltip = '点击查看连接状态';
+    ? '$(vm-active) ' + vscode.l10n.t('MediaWiki: Connected')
+    : '$(vm-outline) ' + vscode.l10n.t('MediaWiki: Waiting for the browser');
+  statusBar.tooltip = vscode.l10n.t('Click to view the connection status');
   statusBar.show();
 }
 
@@ -98,7 +98,10 @@ function push(doc: vscode.TextDocument): boolean {
     text: doc.getText(),
   });
   if (count > 0) {
-    vscode.window.setStatusBarMessage('MediaWiki: 已把保存内容推送到浏览器预览', 5000);
+    vscode.window.setStatusBarMessage(
+      vscode.l10n.t('MediaWiki: Pushed the saved content to the browser preview'),
+      5000,
+    );
   }
   return count > 0;
 }
@@ -145,7 +148,7 @@ async function closeEditor(fsPath: string): Promise<void> {
 async function discardDraft(
   fsPath: string,
   sessionId: string,
-  message = 'MediaWiki: 已放弃修改，临时文件已删除',
+  message = vscode.l10n.t('MediaWiki: Changes discarded; the temp file was deleted'),
 ): Promise<void> {
   clearDirty(fsPath);
   sessionManager?.remove(sessionId);
@@ -194,24 +197,34 @@ function handleEditorClosed(fsPath: string): void {
   const changed = text === undefined || (sessionController?.edited(sessionId, text) ?? true);
   if (!changed) {
     // The page still has this exact content; nothing can be lost by deleting.
-    void discardDraft(fsPath, sessionId, 'MediaWiki: 内容未修改，临时文件已删除');
+    void discardDraft(
+      fsPath,
+      sessionId,
+      vscode.l10n.t('MediaWiki: No changes; the temp file was deleted'),
+    );
     return;
   }
+  const keepLabel = vscode.l10n.t('Save as draft');
+  const discardLabel = vscode.l10n.t('Discard changes');
   void vscode.window
     .showWarningMessage(
-      `MediaWiki: ${meta.title} 的编辑器已关闭，还有未提交的修改。`,
+      vscode.l10n.t(
+        'MediaWiki: The editor for {0} was closed with uncommitted changes.',
+        meta.title,
+      ),
       {
         modal: true,
-        detail:
-          '保存为草稿：保留临时文件，可运行「MediaWiki: 恢复编辑草稿」。\n' +
-          `放弃修改：删除临时文件，未提交的改动无法恢复。\n${fsPath}`,
+        detail: vscode.l10n.t(
+          'Save as draft: keep the temp file; run "MediaWiki: Restore editing draft" later.\nDiscard changes: delete the temp file; uncommitted changes cannot be recovered.\n{0}',
+          fsPath,
+        ),
       },
-      '保存为草稿',
-      '放弃修改',
+      keepLabel,
+      discardLabel,
     )
     .then(choice => {
-      // 关闭对话框或选择草稿时，文件已经按草稿保留。
-      if (choice !== '放弃修改') return;
+      // Closing the dialog or keeping the draft leaves the file on disk.
+      if (choice !== discardLabel) return;
       return discardDraft(fsPath, sessionId);
     });
 }
@@ -252,7 +265,10 @@ function revealLine(editor: vscode.TextEditor, line: number): void {
     new vscode.Range(position, position),
     vscode.TextEditorRevealType.InCenter,
   );
-  vscode.window.setStatusBarMessage(`MediaWiki: 定位到第 ${line + 1} 行`, 2000);
+  vscode.window.setStatusBarMessage(
+    vscode.l10n.t('MediaWiki: Jumped to line {0}', String(line + 1)),
+    2000,
+  );
 }
 
 async function locateInEditor(msg: LocateMessage): Promise<void> {
@@ -288,20 +304,28 @@ function handleMessage(
   } else if (msg.type === 'open') {
     if ('section' in msg && msg.section != null) {
       vscode.window.showWarningMessage(
-        'MediaWiki: 网页端脚本仍在请求章节编辑。本版本只支持整页编辑，请更新网页端脚本后重试。',
+        vscode.l10n.t(
+          'MediaWiki: The web plugin still requests section editing. This version only supports whole-page editing; update the web plugin and try again.',
+        ),
       );
       return;
     }
     const wiki = wikis.resolve(context, msg.wiki, ws.origin);
     if (!wiki) {
       vscode.window.showWarningMessage(
-        `MediaWiki: 未注册的 wiki（${msg.wiki || ws.origin || '未知来源'}）。请确认网页端脚本已更新并刷新页面。`,
+        vscode.l10n.t(
+          'MediaWiki: Unregistered wiki ({0}). Make sure the web plugin is up to date and reload the page.',
+          msg.wiki || ws.origin || vscode.l10n.t('unknown origin'),
+        ),
       );
       return;
     }
     controller.open(msg, ws, wiki).catch((error: unknown) =>
       vscode.window.showErrorMessage(
-        `MediaWiki: ${error instanceof Error ? error.message : String(error)}`,
+        vscode.l10n.t(
+          'MediaWiki: {0}',
+          error instanceof Error ? error.message : String(error),
+        ),
       ),
     );
   } else if (msg.type === 'finish') {
@@ -313,7 +337,10 @@ function handleMessage(
   } else if (msg.type === 'conflict') {
     controller.handleConflict(msg).catch((error: unknown) =>
       vscode.window.showErrorMessage(
-        `MediaWiki: 载入冲突失败：${error instanceof Error ? error.message : String(error)}`,
+        vscode.l10n.t(
+          'MediaWiki: Failed to load the conflict: {0}',
+          error instanceof Error ? error.message : String(error),
+        ),
       ),
     );
   } else if (msg.type === 'save-confirmed') {
@@ -347,10 +374,16 @@ function activate(context: vscode.ExtensionContext): void {
   if (sessionStore.legacySectionPaths.length) {
     const paths = sessionStore.legacySectionPaths;
     const shown = paths.slice(0, 3).join('\n');
-    const more = paths.length > 3 ? `\n…等 ${paths.length} 个文件` : '';
+    const more =
+      paths.length > 3
+        ? '\n' + vscode.l10n.t('…and {0} more files', String(paths.length))
+        : '';
     vscode.window.showWarningMessage(
-      'MediaWiki: 已停止管理旧的章节编辑草稿（当前版本只支持整页编辑），临时文件仍保留：\n' +
-        `${shown}${more}`,
+      vscode.l10n.t(
+        'MediaWiki: Stopped tracking old section-editing drafts (this version only supports whole-page editing). The temp files are kept:\n{0}{1}',
+        shown,
+        more,
+      ),
     );
   }
   syncRestoredSessions();
@@ -392,7 +425,11 @@ function activate(context: vscode.ExtensionContext): void {
     },
     onError: error => {
       vscode.window.showErrorMessage(
-        `MediaWiki: 本地服务启动失败（端口 ${port}）：${error.message}`,
+        vscode.l10n.t(
+          'MediaWiki: Failed to start the local server (port {0}): {1}',
+          String(port),
+          error.message,
+        ),
       );
     },
   });
@@ -403,28 +440,36 @@ function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('mediawikiEditor.push', () => {
       const editor = vscode.window.activeTextEditor;
       if (!editor) {
-        vscode.window.showInformationMessage('MediaWiki: 当前没有打开的文件。');
+        vscode.window.showInformationMessage(
+          vscode.l10n.t('MediaWiki: No file is open.'),
+        );
         return;
       }
       if (!push(editor.document)) {
         vscode.window.showInformationMessage(
-          'MediaWiki: 当前文件不是编辑会话，或浏览器未连接。',
+          vscode.l10n.t(
+            'MediaWiki: The current file is not an editing session, or the browser is not connected.',
+          ),
         );
       }
     }),
     vscode.commands.registerCommand('mediawikiEditor.save', async () => {
       const editor = vscode.window.activeTextEditor;
       if (!editor) {
-        vscode.window.showInformationMessage('MediaWiki: 当前没有打开的文件。');
+        vscode.window.showInformationMessage(
+          vscode.l10n.t('MediaWiki: No file is open.'),
+        );
         return;
       }
       const sessionId = sessionManager?.idForPath(editor.document.uri.fsPath);
       if (!sessionId) {
-        vscode.window.showInformationMessage('MediaWiki: 当前文件不是编辑会话。');
+        vscode.window.showInformationMessage(
+          vscode.l10n.t('MediaWiki: The current file is not an editing session.'),
+        );
         return;
       }
       const summary = await vscode.window.showInputBox({
-        prompt: '编辑摘要',
+        prompt: vscode.l10n.t('Edit summary'),
         value: '[VSCode]',
       });
       if (summary === undefined) return;
@@ -437,22 +482,30 @@ function activate(context: vscode.ExtensionContext): void {
       if (result.ok) {
         await sessionController!.finish({type: 'finish', sessionId, result: 'saved'});
         vscode.window.showInformationMessage(
-          'MediaWiki: 已提交，等待浏览器显示新内容后清理临时文件。',
+          vscode.l10n.t(
+            'MediaWiki: Submitted; waiting for the browser to show the new content before cleanup.',
+          ),
         );
       } else {
-        vscode.window.showErrorMessage(`MediaWiki: 保存失败：${result.error}`);
+        vscode.window.showErrorMessage(
+          vscode.l10n.t('MediaWiki: Save failed: {0}', result.error ?? ''),
+        );
       }
     }),
     vscode.commands.registerCommand('mediawikiEditor.closeSession', async () => {
       const editor = vscode.window.activeTextEditor;
       if (!editor) {
-        vscode.window.showInformationMessage('MediaWiki: 当前没有打开的文件。');
+        vscode.window.showInformationMessage(
+          vscode.l10n.t('MediaWiki: No file is open.'),
+        );
         return;
       }
       const sessionId = sessionManager?.idForPath(editor.document.uri.fsPath);
       const meta = sessionId ? sessionManager?.get(sessionId) : undefined;
       if (!sessionId || !meta) {
-        vscode.window.showInformationMessage('MediaWiki: 当前文件不是编辑会话。');
+        vscode.window.showInformationMessage(
+          vscode.l10n.t('MediaWiki: The current file is not an editing session.'),
+        );
         return;
       }
       const controller = sessionController!;
@@ -461,7 +514,9 @@ function activate(context: vscode.ExtensionContext): void {
         meta.closePageOnConfirm = true;
         await closeEditor(meta.fsPath);
         vscode.window.showInformationMessage(
-          'MediaWiki: 已提交，等待浏览器确认后关闭页面并清理临时文件。',
+          vscode.l10n.t(
+            'MediaWiki: Submitted; waiting for the browser to confirm before closing the page and cleaning up.',
+          ),
         );
         return;
       }
@@ -474,21 +529,26 @@ function activate(context: vscode.ExtensionContext): void {
         return;
       }
 
+      const saveLabel = vscode.l10n.t('Save and close');
+      const discardLabel = vscode.l10n.t('Discard changes');
       const choice = await vscode.window.showWarningMessage(
-        `MediaWiki: ${meta.title} 有未提交的修改，关闭前要保存吗？`,
+        vscode.l10n.t(
+          'MediaWiki: {0} has uncommitted changes. Save before closing?',
+          meta.title,
+        ),
         {modal: true},
-        '保存并关闭',
-        '放弃修改',
+        saveLabel,
+        discardLabel,
       );
       if (!choice) return;
-      if (choice === '放弃修改') {
+      if (choice === discardLabel) {
         sendFinish(meta, sessionId, 'discarded');
         await controller.finish({type: 'finish', sessionId, result: 'discarded'});
         return;
       }
 
       const summary = await vscode.window.showInputBox({
-        prompt: '编辑摘要',
+        prompt: vscode.l10n.t('Edit summary'),
         value: '[VSCode]',
       });
       if (summary === undefined) return;
@@ -498,7 +558,9 @@ function activate(context: vscode.ExtensionContext): void {
         sessionManager?.markDraft(sessionId);
         await closeEditor(meta.fsPath);
         vscode.window.showWarningMessage(
-          'MediaWiki: 浏览器未连接，已保存为草稿。',
+          vscode.l10n.t(
+            'MediaWiki: The browser is not connected; the file was kept as a draft.',
+          ),
         );
         return;
       }
@@ -510,14 +572,18 @@ function activate(context: vscode.ExtensionContext): void {
         false,
       );
       if (!result.ok) {
-        vscode.window.showErrorMessage(`MediaWiki: 保存失败：${result.error}`);
+        vscode.window.showErrorMessage(
+          vscode.l10n.t('MediaWiki: Save failed: {0}', result.error ?? ''),
+        );
         return;
       }
       meta.closePageOnConfirm = true;
       await controller.finish({type: 'finish', sessionId, result: 'saved'});
       await closeEditor(meta.fsPath);
       vscode.window.showInformationMessage(
-        'MediaWiki: 已提交，等待浏览器确认后关闭页面并清理临时文件。',
+        vscode.l10n.t(
+          'MediaWiki: Submitted; waiting for the browser to confirm before closing the page and cleaning up.',
+        ),
       );
     }),
     vscode.commands.registerCommand('mediawikiEditor.restoreDraft', () =>
@@ -526,27 +592,38 @@ function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('mediawikiEditor.openPage', async () => {
       const editor = vscode.window.activeTextEditor;
       if (!editor) {
-        vscode.window.showInformationMessage('MediaWiki: 当前没有打开的文件。');
+        vscode.window.showInformationMessage(
+          vscode.l10n.t('MediaWiki: No file is open.'),
+        );
         return;
       }
       const sessionId = sessionManager?.idForPath(editor.document.uri.fsPath);
       const meta = sessionId ? sessionManager?.get(sessionId) : undefined;
       if (!meta) {
-        vscode.window.showInformationMessage('MediaWiki: 当前文件不是编辑会话。');
+        vscode.window.showInformationMessage(
+          vscode.l10n.t('MediaWiki: The current file is not an editing session.'),
+        );
         return;
       }
       const url = sessionController!.pageUrl(meta.wiki, meta.title);
       if (!url) {
-        vscode.window.showErrorMessage('MediaWiki: 无法生成页面地址。');
+        vscode.window.showErrorMessage(
+          vscode.l10n.t('MediaWiki: Unable to build the page URL.'),
+        );
         return;
       }
       await vscode.env.openExternal(vscode.Uri.parse(url));
-      vscode.window.setStatusBarMessage(`MediaWiki: 已在浏览器打开 ${meta.title}`, 5000);
+      vscode.window.setStatusBarMessage(
+        vscode.l10n.t('MediaWiki: Opened {0} in the browser', meta.title),
+        5000,
+      );
     }),
     vscode.commands.registerCommand('mediawikiEditor.check', async () => {
       const editor = vscode.window.activeTextEditor;
       if (!editor) {
-        vscode.window.showInformationMessage('MediaWiki: 当前没有打开的文件。');
+        vscode.window.showInformationMessage(
+          vscode.l10n.t('MediaWiki: No file is open.'),
+        );
         return;
       }
       if (!languageFeatures) return;
@@ -555,17 +632,22 @@ function activate(context: vscode.ExtensionContext): void {
         await languageFeatures.check(document);
       } catch (error) {
         vscode.window.showErrorMessage(
-          `MediaWiki: 语言检查失败：${
-            error instanceof Error ? error.message : String(error)
-          }`,
+          vscode.l10n.t(
+            'MediaWiki: Language check failed: {0}',
+            error instanceof Error ? error.message : String(error),
+          ),
         );
       }
     }),
     vscode.commands.registerCommand('mediawikiEditor.status', () => {
       const connected = bridge?.connectionCount || 0;
       vscode.window.showInformationMessage(
-        `MediaWiki: 端口 ${config().get('port')}，${connected} 个浏览器连接，` +
-          `${sessionManager?.values().length || 0} 个活动编辑会话。`,
+        vscode.l10n.t(
+          'MediaWiki: Port {0}, {1} browser connection(s), {2} active editing session(s).',
+          String(config().get('port')),
+          String(connected),
+          String(sessionManager?.values().length || 0),
+        ),
       );
     }),
     vscode.workspace.onDidSaveTextDocument(doc => {

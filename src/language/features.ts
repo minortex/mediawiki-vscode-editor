@@ -702,7 +702,9 @@ export function registerLanguageFeatures(
         );
         completion.detail = item.detail;
         if (item.documentation) {
-          completion.documentation = new vscode.MarkdownString(item.documentation);
+          completion.documentation = new vscode.MarkdownString(
+            item.documentation,
+          );
         }
         completion.insertText = new vscode.SnippetString(item.body);
         completion.range = range;

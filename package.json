@@ -2,7 +2,7 @@
   "name": "mediawiki-vscode-editor",
   "displayName": "%displayName%",
   "description": "%description%",
-  "version": "0.20.1",
+  "version": "0.21.0",
   "publisher": "minortex",
   "license": "GPL-3.0-or-later",
   "engines": {
@@ -12,6 +12,7 @@
     "Other"
   ],
   "main": "./out/extension.js",
+  "l10n": "./l10n",
   "activationEvents": [
     "onStartupFinished",
     "onLanguage:mediawiki-wikitext"

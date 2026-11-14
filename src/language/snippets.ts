@@ -55,9 +55,9 @@ function heading(prefix: string, character: number): SnippetContext | undefined 
   for (let level = 1; level <= 6; level++) {
     const marker = '='.repeat(level);
     items.push({
-      label: `H${level} 标题`,
-      body: `${marker} \${1:标题} ${marker}`,
-      detail: `${marker} 标题 ${marker}`,
+      label: `H${level} heading`,
+      body: `${marker} \${1:Heading} ${marker}`,
+      detail: `${marker} Heading ${marker}`,
       filterText: marker,
       sortText: `${Math.abs(level - typed)}${level}`,
       preselect: level === typed,
@@ -73,8 +73,8 @@ function quotes(prefix: string, character: number): SnippetContext | undefined {
   const start = character - run;
   const make = (label: string, marker: string, preselect = false): SnippetItem => ({
     label,
-    body: `${marker}\${1:文字}${marker}`,
-    detail: `${marker}文字${marker}`,
+    body: `${marker}\${1:text}${marker}`,
+    detail: `${marker}text${marker}`,
     filterText: match[0],
     preselect,
   });
@@ -84,20 +84,20 @@ function quotes(prefix: string, character: number): SnippetContext | undefined {
       start,
       end: character,
       items: [
-        make('粗体', "'''", true),
-        make('斜体', "''"),
-        make('粗斜体', "'''''"),
+        make('Bold', "'''", true),
+        make('Italic', "''"),
+        make('Bold italic', "'''''"),
       ],
     };
   }
   if (run === 2) {
-    return {id: 'quote-italic', start, end: character, items: [make('斜体', "''", true)]};
+    return {id: 'quote-italic', start, end: character, items: [make('Italic', "''", true)]};
   }
   if (run === 3) {
-    return {id: 'quote-bold', start, end: character, items: [make('粗体', "'''", true)]};
+    return {id: 'quote-bold', start, end: character, items: [make('Bold', "'''", true)]};
   }
   if (run === 5) {
-    return {id: 'quote-both', start, end: character, items: [make('粗斜体', "'''''", true)]};
+    return {id: 'quote-both', start, end: character, items: [make('Bold italic', "'''''", true)]};
   }
   return undefined;
 }
@@ -112,16 +112,16 @@ function signature(prefix: string, character: number): SnippetContext | undefine
     end: character,
     items: [
       {
-        label: '签名',
+        label: 'Signature',
         body: '~~~~',
-        detail: '用户名 + 时间',
+        detail: 'Username + time',
         filterText: match[0],
         preselect: true,
       },
       {
-        label: '仅时间',
+        label: 'Time only',
         body: '~~~~~',
-        detail: '仅时间戳',
+        detail: 'Timestamp only',
         filterText: match[0],
       },
     ],
@@ -144,9 +144,9 @@ function redirect(
     end: character,
     items: [
       {
-        label: '重定向',
-        body: `${text} [[\${1:页面名}]]`,
-        detail: '重定向到目标页面',
+        label: 'Redirect',
+        body: `${text} [[\${1:Page name}]]`,
+        detail: 'Redirect to the target page',
         filterText: text,
         preselect: true,
       },
@@ -171,13 +171,13 @@ function tag(
       ? {
           label: `<${tagName}/>`,
           body: `<${tagName}/>`,
-          detail: '自闭合标签',
+          detail: 'Self-closing tag',
           filterText: `<${tagName}`,
         }
       : {
           label: `<${tagName}>…</${tagName}>`,
           body: `<${tagName}>\${1}</${tagName}>`,
-          detail: '成对标签',
+          detail: 'Paired tag',
           filterText: `<${tagName}`,
         };
   if (lower && (tags.has(lower) || voidTags.has(lower))) {
@@ -189,22 +189,22 @@ function tag(
     };
     if (lower === 'ref') {
       pair(
-        `<${display} name="\${1:名称}">\${2:内容}</${display}>`,
+        `<${display} name="\${1:name}">\${2:content}</${display}>`,
         `<${display} name="…">…</${display}>`,
-        '带名称的引用',
+        'Named reference',
         true,
       );
       pair(
-        `<${display} name="\${1:名称}"/>`,
+        `<${display} name="\${1:name}"/>`,
         `<${display} name="…"/>`,
-        '复用已有引用',
+        'Reuse an existing reference',
       );
     } else if (lower === 'references') {
-      pair(`<${display}/>`, `<${display}/>`, '引用列表', true);
+      pair(`<${display}/>`, `<${display}/>`, 'Reference list', true);
       pair(
-        `<${display}>\${1:内容}</${display}>`,
+        `<${display}>\${1:content}</${display}>`,
         `<${display}>…</${display}>`,
-        '自定义引用列表',
+        'Custom reference list',
       );
     } else {
       items.push({...generic(display), preselect: true});
@@ -292,9 +292,9 @@ export function snippetsAt(
     'argument',
     '{{{',
     '}}}',
-    '模板参数',
-    '{{{参数名}}}',
-    `{{{\${1:参数名}}}}}`,
+    'Template parameter',
+    '{{{parameter}}}',
+    `{{{\${1:parameter}}}}}`,
   );
   if (argument) return argument;
 
@@ -305,9 +305,9 @@ export function snippetsAt(
     'template',
     '{{',
     '}}',
-    '模板',
-    '{{模板名}}',
-    `{{\${1:模板名}}}`,
+    'Template',
+    '{{Template}}',
+    `{{\${1:Template}}}`,
   );
   if (template) return template;
 
@@ -318,9 +318,9 @@ export function snippetsAt(
     'link',
     '[[',
     ']]',
-    '内链',
-    '[[页面名]]',
-    `[[\${1:页面名}]]`,
+    'Internal link',
+    '[[Page name]]',
+    `[[\${1:Page name}]]`,
   );
   if (link) return link;
 
@@ -331,9 +331,9 @@ export function snippetsAt(
     'comment',
     '<!--',
     '-->',
-    '注释',
-    '<!-- 注释 -->',
-    `<!-- \${1:注释} -->`,
+    'Comment',
+    '<!-- comment -->',
+    `<!-- \${1:comment} -->`,
   );
   if (comment) return comment;
 
@@ -344,9 +344,9 @@ export function snippetsAt(
     'variant',
     '-{',
     '}-',
-    '语言变体',
-    '-{文本}-',
-    `-{\${1:文本}}-`,
+    'Language variant',
+    '-{text}-',
+    `-{\${1:text}}-`,
   );
   if (variant) return variant;
 
@@ -358,9 +358,9 @@ export function snippetsAt(
       end: character,
       items: [
         {
-          label: '表格',
-          body: '{| ${1:class="wikitable"}\n|+ ${2:标题}\n|-\n! ${3:表头}\n| ${4:内容}\n|}',
-          detail: '标准 wikitable 骨架',
+          label: 'Table',
+          body: '{| ${1:class="wikitable"}\n|+ ${2:Caption}\n|-\n! ${3:Header}\n| ${4:Content}\n|}',
+          detail: 'Standard wikitable skeleton',
           filterText: '{|',
           preselect: true,
         },
@@ -376,9 +376,9 @@ export function snippetsAt(
       end: character,
       items: [
         {
-          label: '分隔线',
+          label: 'Divider',
           body: '----',
-          detail: '水平分隔线',
+          detail: 'Horizontal rule',
           filterText: '----',
           preselect: true,
         },

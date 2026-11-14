@@ -1,8 +1,16 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {createRequire} from 'node:module';
+import Module, {createRequire} from 'node:module';
 
 const require = createRequire(import.meta.url);
+const vscodeMock = {
+  l10n: {t: message => message},
+};
+const loadModule = Module._load;
+Module._load = function (request, parent, isMain) {
+  if (request === 'vscode') return vscodeMock;
+  return loadModule.call(this, request, parent, isMain);
+};
 const {markConflict} = require('../out/sessions/conflict.js');
 
 test('conflict markers keep common prefix and suffix outside the block', () => {
@@ -12,7 +20,7 @@ test('conflict markers keep common prefix and suffix outside the block', () => {
     markConflict(local, remote, '站点最新版本（rev 9）'),
     [
       '首行',
-      '<<<<<<< VSCode 本地版本',
+      '<<<<<<< VSCode local version',
       '本地一',
       '本地二',
       '=======',
@@ -29,5 +37,5 @@ test('identical texts do not create markers', () => {
 
 test('no common lines marks the whole file', () => {
   const marked = markConflict('local', 'remote', '远端');
-  assert.match(marked, /^<<<<<<< VSCode 本地版本\nlocal\n=======\nremote\n>>>>>>> 远端$/);
+  assert.match(marked, /^<<<<<<< VSCode local version\nlocal\n=======\nremote\n>>>>>>> 远端$/);
 });

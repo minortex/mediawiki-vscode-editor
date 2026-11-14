@@ -155,7 +155,11 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
     });
 
     vscode.window.setStatusBarMessage(
-      `MediaWiki: 正在编辑 ${wiki.name} 的 ${msg.title}，保存文件即刷新浏览器预览`,
+      vscode.l10n.t(
+        'MediaWiki: Editing {0} on {1}; save the file to refresh the browser preview',
+        msg.title,
+        wiki.name,
+      ),
       8000,
     );
   }
@@ -170,20 +174,30 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
     ) {
       sessionManager.markDraft(msg.sessionId);
       vscode.window.showWarningMessage(
-        `MediaWiki: 提交未成功，临时文件已保留为草稿：${meta.fsPath}`,
+        vscode.l10n.t(
+          'MediaWiki: Commit failed; the temp file was kept as a draft: {0}',
+          meta.fsPath,
+        ),
       );
       return;
     }
     if (msg.result !== 'saved' && msg.result !== 'unchanged' && msg.result !== 'discarded') {
       sessionManager.markDraft(msg.sessionId);
-      vscode.window.showWarningMessage(`MediaWiki: 编辑会话已断开，临时文件保留：${meta.fsPath}`);
+      vscode.window.showWarningMessage(
+        vscode.l10n.t(
+          'MediaWiki: The editing session was disconnected; the temp file was kept: {0}',
+          meta.fsPath,
+        ),
+      );
       return;
     }
     if (msg.result === 'saved') {
       saveFailures.delete(msg.sessionId);
       sessionManager.markAwaitingConfirm(msg.sessionId);
       vscode.window.setStatusBarMessage(
-        'MediaWiki: 已提交，等待浏览器确认新内容后清理临时文件',
+        vscode.l10n.t(
+          'MediaWiki: Submitted; waiting for the browser to confirm the new content before cleanup',
+        ),
         5000,
       );
       return;
@@ -191,7 +205,7 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
     saveFailures.delete(msg.sessionId);
     sessionManager.remove(msg.sessionId);
     await closeAndDelete(meta.fsPath);
-    vscode.window.setStatusBarMessage('MediaWiki: 编辑会话已结束', 5000);
+    vscode.window.setStatusBarMessage(vscode.l10n.t('MediaWiki: Editing session ended'), 5000);
   }
 
   function markSaved(sessionId: string): void {
@@ -220,18 +234,23 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
     );
     if (!doc) {
       vscode.window.showWarningMessage(
-        `MediaWiki: 检测到编辑冲突，但找不到本地文件：${meta.fsPath}`,
+        vscode.l10n.t(
+          'MediaWiki: Edit conflict detected, but the local file is missing: {0}',
+          meta.fsPath,
+        ),
       );
       return;
     }
     const local = doc.getText();
     const label = msg.remoteRevid
-      ? `站点最新版本（rev ${msg.remoteRevid}）`
-      : '站点最新版本';
+      ? vscode.l10n.t('Site latest revision (rev {0})', String(msg.remoteRevid))
+      : vscode.l10n.t('Site latest revision');
     const merged = markConflict(local, msg.remoteText, label);
     if (merged === local) {
       vscode.window.showWarningMessage(
-        'MediaWiki: 提交冲突，但本地内容与站点最新内容一致。',
+        vscode.l10n.t(
+          'MediaWiki: The submission conflicted, but the local content matches the latest site content.',
+        ),
       );
       return;
     }
@@ -244,13 +263,17 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
     const applied = await vscode.workspace.applyEdit(edit);
     if (!applied) {
       vscode.window.showWarningMessage(
-        'MediaWiki: 提交冲突，但无法写入冲突标记。本地文件已保留。',
+        vscode.l10n.t(
+          'MediaWiki: The submission conflicted, but the conflict markers could not be written. The local file was kept.',
+        ),
       );
       return;
     }
     await vscode.window.showTextDocument(doc, {preview: false});
     vscode.window.showWarningMessage(
-      'MediaWiki: 检测到编辑冲突，已将本地版本与站点最新版本写入编辑器。请处理冲突标记后重新提交。',
+      vscode.l10n.t(
+        'MediaWiki: Edit conflict detected; the local and latest site versions were written to the editor. Resolve the markers and submit again.',
+      ),
     );
   }
 
@@ -277,10 +300,10 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
     }
     try {
       if (msg.origin && ws.origin && !sameOrigin(msg.origin, ws.origin)) {
-        throw new Error('站点来源与浏览器连接不一致');
+        throw new Error(vscode.l10n.t('Site origin does not match the browser connection'));
       }
       if (ws.origin && meta.wiki.origin && !sameOrigin(meta.wiki.origin, ws.origin)) {
-        throw new Error('会话不属于当前站点');
+        throw new Error(vscode.l10n.t('The session does not belong to the current site'));
       }
       const doc = vscode.workspace.textDocuments.find(
         document => document.uri.fsPath === meta.fsPath,
@@ -288,7 +311,10 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
       if (doc?.isDirty) {
         sessionManager.markDraft(msg.sessionId, false, true);
         vscode.window.showWarningMessage(
-          `MediaWiki: 浏览器已显示新内容，但本地文件还有未提交修改，已保留为草稿：${meta.fsPath}`,
+          vscode.l10n.t(
+            'MediaWiki: The browser already shows the new content, but the local file still has unsubmitted changes; it was kept as a draft: {0}',
+            meta.fsPath,
+          ),
         );
         reply({ok: true});
         return;
@@ -297,7 +323,10 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
       clearDirty(meta.fsPath);
       sessionManager.remove(msg.sessionId);
       await closeAndDelete(meta.fsPath);
-      vscode.window.setStatusBarMessage('MediaWiki: 浏览器已显示新内容，临时文件已清理', 5000);
+      vscode.window.setStatusBarMessage(
+        vscode.l10n.t('MediaWiki: The browser shows the new content; the temp file was cleaned up'),
+        5000,
+      );
       reply({ok: true});
       if (closePage) {
         try {
@@ -306,7 +335,9 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
       }
     } catch (error) {
       reply({ok: false, error: errorMessage(error)});
-      vscode.window.showWarningMessage(`MediaWiki: 清理临时文件失败：${errorMessage(error)}`);
+      vscode.window.showWarningMessage(
+        vscode.l10n.t('MediaWiki: Failed to clean up the temp file: {0}', errorMessage(error)),
+      );
     }
   }
 
@@ -328,9 +359,9 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
       } catch {}
     };
     try {
-      if (!requestId) throw new Error('缺少 requestId');
+      if (!requestId) throw new Error(vscode.l10n.t('Missing requestId'));
       if (!ws.origin || !msg.origin || !sameOrigin(msg.origin, ws.origin)) {
-        throw new Error('站点来源与浏览器连接不一致');
+        throw new Error(vscode.l10n.t('Site origin does not match the browser connection'));
       }
       const before = wikis.resolve(context, msg.origin);
       const entry = await wikis.upsert(context, {
@@ -377,9 +408,9 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
       } catch {}
     };
     try {
-      if (!requestId) throw new Error('缺少 requestId');
+      if (!requestId) throw new Error(vscode.l10n.t('Missing requestId'));
       if (!ws.origin || !msg.origin || !sameOrigin(msg.origin, ws.origin)) {
-        throw new Error('站点来源与浏览器连接不一致');
+        throw new Error(vscode.l10n.t('Site origin does not match the browser connection'));
       }
       const title = normalizePageName(msg.title);
       if (!title) {
@@ -463,7 +494,9 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
       .values()
       .find(item => item.ws && sameOrigin(item.wiki.origin, request.wiki.origin));
     if (!meta?.ws || !getBridge()) {
-      vscode.window.showWarningMessage('MediaWiki: 浏览器未连接，无法打开目标页面。');
+      vscode.window.showWarningMessage(
+        vscode.l10n.t('MediaWiki: The browser is not connected; cannot open the target page.'),
+      );
       return false;
     }
     try {
@@ -474,12 +507,16 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
       );
       if (!reply.opened) {
         vscode.window.showWarningMessage(
-          'MediaWiki: 浏览器拦截了目标页面，请允许本站弹窗后重试。',
+          vscode.l10n.t(
+            'MediaWiki: The browser blocked the target page. Allow popups for this site and try again.',
+          ),
         );
       }
       return !!reply.opened;
     } catch (error) {
-      vscode.window.showWarningMessage(`MediaWiki: 打开目标页面失败：${errorMessage(error)}`);
+      vscode.window.showWarningMessage(
+        vscode.l10n.t('MediaWiki: Failed to open the target page: {0}', errorMessage(error)),
+      );
       return false;
     }
   }
@@ -492,8 +529,10 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
   ): Promise<SaveOutcome> {
     const meta = sessionManager.get(sessionId);
     if (!meta?.ws || !getBridge()) {
-      vscode.window.showWarningMessage('MediaWiki: 浏览器未连接，无法提交。');
-      return {ok: false, error: '浏览器未连接'};
+      vscode.window.showWarningMessage(
+        vscode.l10n.t('MediaWiki: The browser is not connected; cannot submit.'),
+      );
+      return {ok: false, error: vscode.l10n.t('Browser is not connected')};
     }
     try {
       const doc = vscode.workspace.textDocuments.find(
@@ -507,7 +546,9 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
       );
       return {ok: !!reply.ok, error: reply.error};
     } catch (error) {
-      vscode.window.showWarningMessage(`MediaWiki: 提交失败：${errorMessage(error)}`);
+      vscode.window.showWarningMessage(
+        vscode.l10n.t('MediaWiki: Submission failed: {0}', errorMessage(error)),
+      );
       return {ok: false, error: errorMessage(error)};
     }
   }
@@ -532,7 +573,9 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
   async function restoreDraft(): Promise<void> {
     const drafts = sessionManager.drafts();
     if (!drafts.length) {
-      vscode.window.showInformationMessage('MediaWiki: 没有可恢复的草稿。');
+      vscode.window.showInformationMessage(
+        vscode.l10n.t('MediaWiki: There are no drafts to restore.'),
+      );
       return;
     }
     const picked = await vscode.window.showQuickPick(
@@ -543,15 +586,19 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
         sessionId,
         meta,
       })),
-      {placeHolder: '选择要恢复的草稿'},
+      {placeHolder: vscode.l10n.t('Select the draft to restore')},
     );
     if (!picked) return;
     const doc = await ensureSessionEditor(picked.meta);
     if (!doc) {
-      vscode.window.showErrorMessage('MediaWiki: 草稿文件不存在，无法恢复。');
+      vscode.window.showErrorMessage(
+        vscode.l10n.t('MediaWiki: The draft file does not exist; cannot restore.'),
+      );
       return;
     }
-    vscode.window.showInformationMessage(`MediaWiki: 已恢复 ${picked.meta.title} 的草稿。`);
+    vscode.window.showInformationMessage(
+      vscode.l10n.t('MediaWiki: Restored the draft for {0}.', picked.meta.title),
+    );
   }
 
   function edited(sessionId: string, text: string): boolean | undefined {

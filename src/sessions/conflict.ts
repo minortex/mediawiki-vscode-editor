@@ -2,6 +2,8 @@
  * 把本地文本与站点最新文本合成 Git 风格的冲突块。
  * 相同的前后缀只保留一份，只有真正不同的行进入冲突标记。
  */
+import {l10n} from 'vscode';
+
 export function markConflict(
   local: string,
   remote: string,
@@ -33,7 +35,7 @@ export function markConflict(
   const remoteMiddle = remoteLines.slice(start, remoteLines.length - end).join('\n');
   return [
     ...prefix,
-    '<<<<<<< VSCode 本地版本',
+    l10n.t('<<<<<<< VSCode local version'),
     localMiddle,
     '=======',
     remoteMiddle,

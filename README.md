@@ -119,3 +119,9 @@ stateDiagram-v2
 
 虽然已经尽可能保证大部分情况能跳转，但遇到复杂的排版还是有可能正查/反查失败。
 
+
+## 界面语言
+
+扩展的运行时提示语以英文为源，通过 `vscode.l10n` 按 VS Code 的显示语言自动切换；当前内置简体中文翻译（`l10n/bundle.l10n.zh-cn.json`）。命令标题、配置项等 `package.json` 文案使用 `package.nls*.json`。
+
+新增语言时，复制 `l10n/bundle.l10n.zh-cn.json` 为对应 locale 文件（如 `bundle.l10n.ja.json`），翻译值即可；键名必须与源码中的英文原文一致。切换 VS Code 显示语言可通过命令面板「Configure Display Language」。

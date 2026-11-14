@@ -119,11 +119,11 @@ export async function upsert(
   const origin = normalizeOrigin(payload.origin);
   const query = payload.siteinfo;
   if (!isSiteInfoQuery(query)) {
-    throw new Error('浏览器没有提供完整的 siteinfo');
+    throw new Error(vscode.l10n.t('The browser did not provide complete siteinfo'));
   }
   const api = new URL(payload.api || `${origin}/api.php`, origin).href;
   if (new URL(api).origin !== origin) {
-    throw new Error('API 地址必须与站点同源');
+    throw new Error(vscode.l10n.t('The API URL must share the site origin'));
   }
   const config = buildParserConfig(query, origin);
   const existing = find(context, origin);
@@ -168,20 +168,26 @@ async function promptRemove(
 ): Promise<void> {
   const wikis = custom(context);
   if (!wikis.length) {
-    vscode.window.showInformationMessage('MediaWiki: 没有已注册的 wiki。');
+    vscode.window.showInformationMessage(
+      vscode.l10n.t('MediaWiki: No wikis are registered.'),
+    );
     return;
   }
   const picked = await vscode.window.showQuickPick(
     wikis.map(wiki => ({label: wiki.name, description: wiki.origin, wiki})),
-    {placeHolder: '选择要删除的 wiki'},
+    {placeHolder: vscode.l10n.t('Select the wiki to remove')},
   );
   if (!picked) return;
+  const removeLabel = vscode.l10n.t('Remove');
   const confirm = await vscode.window.showWarningMessage(
-    `MediaWiki: 删除 ${picked.wiki.name}？已生成的解析配置也会删除。`,
+    vscode.l10n.t(
+      'MediaWiki: Remove {0}? Its generated parser config will be deleted too.',
+      picked.wiki.name,
+    ),
     {modal: true},
-    '删除',
+    removeLabel,
   );
-  if (confirm !== '删除') return;
+  if (confirm !== removeLabel) return;
   const wikisLeft = custom(context).filter(wiki => wiki.id !== picked.wiki.id);
   await saveCustom(context, wikisLeft);
   if (picked.wiki.configPath) {
@@ -190,18 +196,26 @@ async function promptRemove(
     } catch {}
   }
   onChange();
-  vscode.window.showInformationMessage(`MediaWiki: 已删除 ${picked.wiki.name}`);
+  vscode.window.showInformationMessage(
+    vscode.l10n.t('MediaWiki: Removed {0}', picked.wiki.name),
+  );
 }
 
 async function showList(context: vscode.ExtensionContext): Promise<void> {
   const items = all(context).map(wiki => ({
     label: wiki.name,
     description: wiki.origin,
-    detail: `API：${wiki.api}\n配置：${wiki.configPath || '（默认）'}`,
+    detail: vscode.l10n.t(
+      'API: {0}\nConfig: {1}',
+      wiki.api,
+      wiki.configPath || vscode.l10n.t('(default)'),
+    ),
     wiki,
   }));
   await vscode.window.showQuickPick(items, {
-    placeHolder: '已注册的 wiki（浏览网页时自动注册，Esc 关闭）',
+    placeHolder: vscode.l10n.t(
+      'Registered wikis (auto-registered while browsing; press Esc to close)',
+    ),
     canPickMany: false,
   });
 }

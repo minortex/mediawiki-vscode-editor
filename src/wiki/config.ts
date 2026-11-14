@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {createRequire} from 'node:module';
 import type {ConfigData} from 'wikiparser-node';
+import {l10n} from 'vscode';
 
 const localRequire = createRequire(__filename);
 const USER_AGENT =
@@ -52,9 +53,9 @@ function baseConfig(): ConfigData {
 
 export function normalizeOrigin(input: unknown): string {
   const value = String(input || '').trim();
-  if (!value) throw new Error('站点地址为空');
+  if (!value) throw new Error(l10n.t('Site address is empty'));
   const url = new URL(/^[a-z][\w+.-]*:\/\//iu.test(value) ? value : `https://${value}`);
-  if (!/^https?:$/u.test(url.protocol)) throw new Error('只支持 http/https 站点');
+  if (!/^https?:$/u.test(url.protocol)) throw new Error(l10n.t('Only http/https sites are supported'));
   return url.origin;
 }
 
@@ -99,13 +100,18 @@ export async function fetchSiteInfo(
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = (await response.json()) as SiteInfoResponse;
       if (data.error) throw new Error(`${data.error.code}: ${data.error.info}`);
-      if (!isSiteInfoQuery(data.query)) throw new Error('站点没有返回完整的 siteinfo');
+      if (!isSiteInfoQuery(data.query)) throw new Error(l10n.t('The site did not return complete siteinfo'));
       return {origin: base, api, query: data.query};
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
     }
   }
-  throw new Error(`无法读取站点信息：${lastError?.message || '未知错误'}`);
+  throw new Error(
+    l10n.t(
+      'Unable to read site info: {0}',
+      lastError?.message || l10n.t('Unknown error'),
+    ),
+  );
 }
 
 export function buildParserConfig(query: SiteInfoQuery, siteOrigin?: unknown): ConfigData {

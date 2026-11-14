@@ -38,9 +38,11 @@ export function createConfigLoader(extensionPath: string): ConfigLoader {
       const fallback = defaultConfigPath();
       if (file !== fallback) {
         vscode.window.showWarningMessage(
-          `MediaWiki: 无法读取解析配置 ${file}，改用内置默认解析配置：${
-            error instanceof Error ? error.message : String(error)
-          }`,
+          vscode.l10n.t(
+            'MediaWiki: Unable to read parser config {0}; using the built-in default: {1}',
+            file,
+            error instanceof Error ? error.message : String(error),
+          ),
         );
         raw = JSON.parse(fs.readFileSync(fallback, 'utf8'));
       } else {
