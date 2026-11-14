@@ -984,7 +984,6 @@ export default {
         titleMatch: boolean
         textMatch: boolean
         entryMatch: boolean
-        navbox: boolean
       }> = []
       const entryMatches: typeof scored = []
       const titleMatches: typeof scored = []
@@ -1012,31 +1011,26 @@ export default {
         if (element.matches('.infobox, .infoBox')) score += 15
         if (text.length > 100) score += 5
         if (score >= 60) {
-          const candidate = {element, score, titleMatch, textMatch, entryMatch, navbox}
+          const candidate = {element, score, titleMatch, textMatch, entryMatch}
           scored.push(candidate)
           if (entryMatch) entryMatches.push(candidate)
           if (titleMatch) titleMatches.push(candidate)
           if (textMatch) textMatches.push(candidate)
         }
       }
-      // 模板名出现在多个块时，标题匹配才是真正的模板块；
-      // 只有标题缺失时才退回正文匹配，避免参数值命中无关的导航盒。
+      // 纯参数命中不算数：只有块标题/正文含模板名，或条目参数与卡片标题一致，
+      // 才可能是真正的模板块；否则宁可不动，也不要跳到无关位置。
       let pool = entryMatches.length
         ? entryMatches
         : titleMatches.length
           ? titleMatches
           : textMatches
-      if (!pool.length) {
-        pool = scored.filter(item => !item.navbox)
-      }
+      if (!pool.length) return false
       pool.sort((a, b) => b.score - a.score)
       const chosen = pool[Math.min(target.occurrence - 1, pool.length - 1)]?.element
-      if (!chosen) return highlightSection(target.section)
-      if (chosen instanceof HTMLElement) {
-        revealHidden(chosen)
-        return drawBox(chosen.getBoundingClientRect())
-      }
-      return highlightSection(target.section)
+      if (!(chosen instanceof HTMLElement)) return false
+      revealHidden(chosen)
+      return drawBox(chosen.getBoundingClientRect())
     }
 
     function scrollToOccurrence(
