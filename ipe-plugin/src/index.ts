@@ -634,9 +634,6 @@ export default {
         send({type: 'open-result', requestId: msg.requestId, opened: false})
         return
       }
-      try {
-        win.focus()
-      } catch {}
       send({type: 'open-result', requestId: msg.requestId, opened: true})
     }
 
