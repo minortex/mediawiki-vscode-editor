@@ -41,6 +41,7 @@ The extension is in charge because it actually holds the user's unsaved changes.
 2. Web side:
    - Click "Save changes" to submit.
    - Click "Cancel": if nothing changed, restore the page and close the editor automatically; if there are changes, ask whether to save them.
+   - Multiple tabs of the same page can attach to one editing session: editor updates are pushed to every attached tab, and saving or cancelling in any tab ends the shared session.
 
 3. Extension side:
 - Editing commands:

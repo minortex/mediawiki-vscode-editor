@@ -1,6 +1,6 @@
 # TODO
 
-## i18n（英文源，进行中）
+## i18n（英文源，已完成）
 
 ### 阶段 1：浏览器插件（已完成）
 
@@ -16,12 +16,20 @@
 - [x] 新增 `package.nls.json`（英文源）与 `package.nls.zh-cn.json`；key 与英文措辞解耦。
 - [x] 验证：20 个 `%key%` 与两份 nls 完全对应（无缺失、无多余、无键差异）；JSON 解析通过。
 
-### 阶段 3：扩展运行时与 snippets
+### 阶段 3：扩展运行时与 snippets（已完成）
 
-- [ ] `package.json` 增加 `"l10n": "./l10n"`；运行时统一 `vscode.l10n.t()`。
-- [ ] 144 处字面量迁移，模板字符串改成 `{0}` 参数形式；生成 `l10n/bundle.l10n.json` 与 `l10n/bundle.l10n.zh-cn.json`。
-- [ ] `language/snippets.ts` 只翻译 label/description，wikitext 片段正文不动。
-- [ ] 脚本检查：除 `zh-cn` 词典外源码不得残留 CJK；伪语言冒烟。
+- [x] `package.json` 增加 `"l10n": "./l10n"`；运行时统一 `vscode.l10n.t()`。
+- [x] 全部用户可见提示迁移为英文源 + `{0}` 参数，生成 `l10n/bundle.l10n.zh-cn.json`。
+- [x] `language/snippets.ts` 不翻译：label/detail/body 全部英文，provider 不做转换。
+- [x] 脚本检查：`l10n.t` 字面量与词典一一对应（缺失/多余为 0）；`npm test` 43/43。
+
+## 多标签页 attach（已完成）
+
+- [x] `SessionMeta.ws` → `sockets: Set`；`session-query` 对已连接会话直接 attach，不再返回 `busy`、不再发送 `preempted`。
+- [x] 最后一个 socket 断开时才把会话转为 `detached`；`markDraft`/`remove` 清理全部 socket。
+- [x] `finish`、`editor-closed`、保存确认后的清理按会话广播到所有已连接标签页。
+- [x] `request-save` 只发给发起保存的标签页，避免多标签重复提交。
+- [x] 测试：多标签共享会话、断开一个仍保持 attached、结束会话通知全部标签页。
 
 ## 只保留整页编辑（已完成）
 
