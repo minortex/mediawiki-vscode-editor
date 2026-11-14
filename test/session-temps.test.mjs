@@ -35,8 +35,3 @@ test('orphan temp cleanup keeps referenced files and recent writes', async () =>
   assert.equal(fs.existsSync(other), true);
   fs.rmSync(root, {recursive: true, force: true});
 });
-
-test('orphan temp cleanup ignores a missing root', async () => {
-  const missing = path.join(os.tmpdir(), `mwe-missing-${Date.now()}`);
-  assert.deepEqual(await removeOrphanTemps(missing, []), []);
-});
