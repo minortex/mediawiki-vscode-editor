@@ -50,3 +50,60 @@ test('session manager persists, detaches, drafts and restores', async () => {
   assert.equal(reloaded.get('s1'), undefined);
   assert.equal(reloaded.idForPath(temp), undefined);
 });
+
+test('a restored draft becomes detached, a closed draft stays', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'session-manager-restored-'));
+  const file = path.join(dir, 'sessions.json');
+  const manager = new SessionManager(new SessionStore(file));
+  const base = {
+    ws: null,
+    title: 'Page',
+    section: null,
+    wiki: {id: 'example.org', name: 'Example', origin: 'https://example.org'},
+    created: 1,
+    state: 'draft',
+  };
+  manager.add('kill', {...base, fsPath: path.join(dir, 'kill.wiki'), autoRestore: true});
+  manager.add('closed', {...base, fsPath: path.join(dir, 'closed.wiki'), autoRestore: false});
+
+  manager.markRestored('kill');
+  assert.equal(manager.get('kill')?.state, 'detached');
+  manager.markRestored('closed');
+  assert.equal(manager.get('closed')?.state, 'draft');
+
+  // An active session is left alone.
+  manager.add('attached', {...base, fsPath: path.join(dir, 'attached.wiki'), autoRestore: true, state: 'attached'});
+  manager.markRestored('attached');
+  assert.equal(manager.get('attached')?.state, 'attached');
+  fs.rmSync(dir, {recursive: true, force: true});
+});
+
+test('a pending save confirmation becomes a restorable draft after a restart', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'session-manager-awaiting-'));
+  const file = path.join(dir, 'sessions.json');
+  const temp = path.join(dir, 'page.wiki');
+  fs.writeFileSync(temp, 'text');
+  const manager = new SessionManager(new SessionStore(file));
+  manager.add('s1', {
+    fsPath: temp,
+    ws: null,
+    title: 'Page',
+    section: null,
+    wiki: {id: 'example.org', name: 'Example', origin: 'https://example.org'},
+    created: 1,
+    state: 'attached',
+    autoRestore: true,
+  });
+  manager.markAwaitingConfirm('s1');
+  assert.equal(manager.drafts().length, 0);
+  await manager.flush();
+
+  const reloaded = new SessionManager(new SessionStore(file));
+  reloaded.load();
+  assert.equal(reloaded.get('s1')?.state, 'draft');
+  assert.equal(reloaded.get('s1')?.awaitingConfirm, false);
+  assert.equal(reloaded.drafts().length, 1);
+
+  reloaded.remove('s1');
+  fs.rmSync(dir, {recursive: true, force: true});
+});

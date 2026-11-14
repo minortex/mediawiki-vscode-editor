@@ -47,7 +47,9 @@ export class SessionManager {
         created: entry.created || Date.now(),
         state: 'draft',
         autoRestore: entry.autoRestore !== false,
-        awaitingConfirm: entry.awaitingConfirm === true,
+        // A confirmation that outlived the browser cannot complete; keep the
+        // file as a restorable draft instead of an invisible session.
+        awaitingConfirm: false,
         originalHash: entry.originalHash,
       };
       this.sessions.set(entry.sessionId, meta);
@@ -188,6 +190,14 @@ export class SessionManager {
     if (!meta) return;
     if (revid !== undefined) meta.revid = revid;
     if (basetimestamp !== undefined) meta.basetimestamp = basetimestamp;
+    this.persist();
+    this.onChange();
+  }
+
+  markRestored(sessionId: string): void {
+    const meta = this.sessions.get(sessionId);
+    if (!meta || meta.state !== 'draft' || !meta.autoRestore) return;
+    meta.state = 'detached';
     this.persist();
     this.onChange();
   }

@@ -22,6 +22,23 @@ let sessionController: SessionController | null = null;
 const dirtyTimers = new Map<string, NodeJS.Timeout>();
 const syncTimers = new Map<string, NodeJS.Timeout>();
 
+const SILENT_CLOSE_MS = 2000;
+const silentCloses = new Map<string, number>();
+
+/** Remember that the extension itself is closing this tab. */
+function markSilentClose(fsPath: string): void {
+  silentCloses.set(fsPath, Date.now());
+  setTimeout(() => silentCloses.delete(fsPath), SILENT_CLOSE_MS).unref();
+}
+
+function consumeSilentClose(fsPath: string): boolean {
+  const at = silentCloses.get(fsPath);
+  if (at === undefined) return false;
+  silentCloses.delete(fsPath);
+  return Date.now() - at <= SILENT_CLOSE_MS;
+}
+
+
 function config(): vscode.WorkspaceConfiguration {
   return vscode.workspace.getConfiguration('mediawikiEditor');
 }
@@ -106,9 +123,95 @@ async function closeEditor(fsPath: string): Promise<void> {
         item.input.uri.fsPath === fsPath,
     );
   if (tab) {
+    markSilentClose(fsPath);
     try {
       await vscode.window.tabGroups.close(tab);
     } catch {}
+  }
+}
+
+async function discardDraft(
+  fsPath: string,
+  sessionId: string,
+  message = 'MediaWiki: 已放弃修改，临时文件已删除',
+): Promise<void> {
+  clearDirty(fsPath);
+  sessionManager?.remove(sessionId);
+  try {
+    await fs.promises.unlink(fsPath);
+  } catch {}
+  updateStatus();
+  vscode.window.setStatusBarMessage(message, 5000);
+}
+
+function tabStillOpen(fsPath: string): boolean {
+  return vscode.window.tabGroups.all.some(group =>
+    group.tabs.some(
+      tab => tab.input instanceof vscode.TabInputText && tab.input.uri.fsPath === fsPath,
+    ),
+  );
+}
+
+/**
+ * A session tab was closed. VSCode does not dispose documents opened through
+ * `workspace.openTextDocument`, so `onDidCloseTextDocument` cannot be relied on;
+ * tab events are the only close signal for these files.
+ */
+function handleEditorClosed(fsPath: string): void {
+  if (consumeSilentClose(fsPath) || tabStillOpen(fsPath)) return;
+  const sessionId = sessionManager?.idForPath(fsPath);
+  const meta = sessionId ? sessionManager?.get(sessionId) : undefined;
+  if (!sessionId || !meta || meta.awaitingConfirm || meta.closePageOnConfirm) return;
+  clearTimeout(dirtyTimers.get(fsPath));
+  dirtyTimers.delete(fsPath);
+  if (meta.ws) {
+    try {
+      meta.ws.send(JSON.stringify({type: 'editor-closed', sessionId}));
+    } catch {}
+  }
+  sessionManager?.markDraft(sessionId);
+  const doc = vscode.workspace.textDocuments.find(
+    document => document.uri.fsPath === fsPath,
+  );
+  let text: string | undefined;
+  try {
+    text = doc ? doc.getText() : fs.readFileSync(fsPath, 'utf8');
+  } catch {
+    text = undefined;
+  }
+  const changed = text === undefined || (sessionController?.edited(sessionId, text) ?? true);
+  if (!changed) {
+    // The page still has this exact content; nothing can be lost by deleting.
+    void discardDraft(fsPath, sessionId, 'MediaWiki: 内容未修改，临时文件已删除');
+    return;
+  }
+  void vscode.window
+    .showWarningMessage(
+      `MediaWiki: ${meta.title} 的编辑器已关闭，还有未提交的修改。`,
+      {
+        modal: true,
+        detail:
+          '保存为草稿：保留临时文件，可运行「MediaWiki: 恢复编辑草稿」。\n' +
+          `放弃修改：删除临时文件，未提交的改动无法恢复。\n${fsPath}`,
+      },
+      '保存为草稿',
+      '放弃修改',
+    )
+    .then(choice => {
+      // 关闭对话框或选择草稿时，文件已经按草稿保留。
+      if (choice !== '放弃修改') return;
+      return discardDraft(fsPath, sessionId);
+    });
+}
+
+/** VSCode restores editor tabs itself; drop the draft flag once the doc is back. */
+function syncRestoredSessions(): void {
+  for (const [sessionId, meta] of sessionManager?.entries() ?? []) {
+    if (meta.state !== 'draft' || !meta.autoRestore) continue;
+    if (!vscode.workspace.textDocuments.some(doc => doc.uri.fsPath === meta.fsPath)) {
+      continue;
+    }
+    sessionManager?.markRestored(sessionId);
   }
 }
 
@@ -223,6 +326,8 @@ function activate(context: vscode.ExtensionContext): void {
   );
   sessionManager = new SessionManager(sessionStore, () => updateStatus());
   sessionManager.load();
+  syncRestoredSessions();
+  setTimeout(syncRestoredSessions, 2000).unref();
   sessionController = createSessionController({
     sessionManager,
     getBridge: () => bridge ?? undefined,
@@ -437,29 +542,13 @@ function activate(context: vscode.ExtensionContext): void {
       push(doc);
       notifyDirty(doc);
     }),
-    vscode.workspace.onDidCloseTextDocument(doc => {
-      const sessionId = sessionManager?.idForPath(doc.uri.fsPath);
-      const meta = sessionId ? sessionManager?.get(sessionId) : undefined;
-      if (
-        !meta ||
-        meta.state === 'draft' ||
-        meta.awaitingConfirm ||
-        meta.closePageOnConfirm
-      ) {
-        return;
+    vscode.workspace.onDidOpenTextDocument(() => syncRestoredSessions()),
+    vscode.window.tabGroups.onDidChangeTabs(event => {
+      for (const tab of event.closed) {
+        if (tab.input instanceof vscode.TabInputText) {
+          handleEditorClosed(tab.input.uri.fsPath);
+        }
       }
-      const timer = dirtyTimers.get(meta.fsPath);
-      if (timer) clearTimeout(timer);
-      dirtyTimers.delete(meta.fsPath);
-      if (meta.ws) {
-        try {
-          meta.ws.send(JSON.stringify({type: 'editor-closed', sessionId}));
-        } catch {}
-      }
-      if (sessionId) sessionManager?.markDraft(sessionId);
-      vscode.window.showInformationMessage(
-        'MediaWiki: 编辑器已关闭，草稿已保留。可运行「MediaWiki: 恢复编辑草稿」。',
-      );
     }),
     vscode.window.onDidChangeTextEditorSelection(event => {
       const sessionId = sessionManager?.idForPath(event.textEditor.document.uri.fsPath);
