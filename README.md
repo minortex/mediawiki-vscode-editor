@@ -1,5 +1,7 @@
 # MediaWiki VSCode External Editor
 
+[English](README.en.md) | 简体中文
+
 一个用 VSCode 作为编辑器，把浏览器当做渲染器的 InPageEdit+VSCode Plugin 组合。
 
 ## 安装
