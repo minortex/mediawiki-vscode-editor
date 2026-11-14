@@ -80,7 +80,7 @@ stateDiagram-v2
     Attached --> Draft: editor closed (VSCode still running)<br/>save failed (file kept)
     Draft --> Attached: restore draft / query takeover
     Attached --> Awaiting: finish, saved
-    Awaiting --> Completed: save-confirmed, delete temp file
+    Awaiting --> Completed: save-confirmed + revid, delete temp file
     Awaiting --> Attached: conflict, write markers into editor
   
     Offline --> Attached: manually restore editing session
@@ -92,7 +92,7 @@ stateDiagram-v2
 | `Attached` | The browser WebSocket is connected and this window is editing |
 | `Detached` | The session still exists, but the browser connection is gone |
 | `Draft` | The VSCode editor is closed and the temp file is kept as a draft |
-| `Awaiting` | Submitted successfully; waiting for the browser to reload and confirm the new content |
+| `Awaiting` | Submitted successfully; waiting for the browser to confirm the new revision id (revid). The temp file is deleted only after that confirmation |
 
 
 

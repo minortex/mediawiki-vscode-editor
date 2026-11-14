@@ -71,8 +71,11 @@ export const messages: Record<string, string> = {
   'Saved; reloading and waiting for confirmation…':
     '已保存，正在刷新并等待确认…',
   'Saved; the new content is now shown': '已保存，新内容已显示',
-  'Saved, but the new content could not be confirmed. The temp file is kept and will be confirmed after the page reloads.':
-    '已保存，但未能确认新内容；临时文件保留，刷新页面后会再次确认',
+  'Saved; the preview could not be refreshed, but revision {{ $1 }} is confirmed':
+    '已保存，预览刷新失败，但已确认修订版本 {{ $1 }}',
+  'The save was submitted but no revision id could be confirmed; the temp file was kept':
+    '提交已完成，但未能确认修订版本号；临时文件已保留',
+  'Save unconfirmed: {{ $1 }}': '保存未确认：{{ $1 }}',
   'Save failed: {{ $1 }}': '保存失败：{{ $1 }}',
   'Edit the whole page in VSCode': '在 VSCode 中编辑整页',
 }

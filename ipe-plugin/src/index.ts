@@ -82,6 +82,27 @@ interface Session {
 interface PendingConfirm {
   sessionId: string
   origin: string
+  /** Revision proven to hold the saved content; the temp file needs it. */
+  revid: number
+}
+
+interface EditResult {
+  newrevid?: number
+  nochange?: boolean
+}
+
+interface RevisionInfo {
+  revid: number
+  parentid?: number
+  content?: string
+  slots?: {main?: {content?: string}}
+}
+
+interface RevisionQueryResponse {
+  error?: SiteError
+  query?: {
+    pages?: Array<{missing?: boolean; revisions?: RevisionInfo[]}>
+  }
 }
 
 interface TextContext {
@@ -281,7 +302,7 @@ type OutgoingMessage =
       section?: string
       occurrence?: number
     }
-  | {type: 'save-confirmed'; sessionId: string; origin: string}
+  | {type: 'save-confirmed'; sessionId: string; revid: number; origin: string}
   | {type: 'open-result'; requestId: string; opened: boolean}
 
 interface Waiter<T> {
@@ -370,20 +391,26 @@ export default {
         const raw = sessionStorage.getItem(PENDING_CONFIRM_KEY)
         if (!raw) return null
         const value: unknown = JSON.parse(raw)
-        if (!value || typeof value !== 'object' || !('sessionId' in value)) return null
-        const sessionId = value.sessionId
-        if (typeof sessionId !== 'string') return null
-        const origin = 'origin' in value && typeof value.origin === 'string'
-          ? value.origin
-          : location.origin
-        return {sessionId, origin}
+        if (!value || typeof value !== 'object') return null
+        const record = value as {sessionId?: unknown; origin?: unknown; revid?: unknown}
+        if (typeof record.sessionId !== 'string') return null
+        // Without a revision id the temp file must not be removed.
+        if (
+          typeof record.revid !== 'number' ||
+          !Number.isInteger(record.revid) ||
+          record.revid <= 0
+        ) {
+          return null
+        }
+        const origin = typeof record.origin === 'string' ? record.origin : location.origin
+        return {sessionId: record.sessionId, origin, revid: record.revid}
       } catch {
         return null
       }
     }
 
-    function storePendingConfirm(sessionId: string): void {
-      pendingConfirm = {sessionId, origin: location.origin}
+    function storePendingConfirm(sessionId: string, revid: number): void {
+      pendingConfirm = {sessionId, origin: location.origin, revid}
       pendingConfirmSent = false
       try {
         sessionStorage.setItem(PENDING_CONFIRM_KEY, JSON.stringify(pendingConfirm))
@@ -406,6 +433,7 @@ export default {
       if (send({
         type: 'save-confirmed',
         sessionId: pendingConfirm.sessionId,
+        revid: pendingConfirm.revid,
         origin: location.origin,
       })) {
         pendingConfirmSent = true
@@ -539,13 +567,89 @@ export default {
     }
 
     // ---------- API ----------
-    function apiPost(params: Record<string, string>): Promise<ParseResponse> {
+    function apiPost<T = ParseResponse>(params: Record<string, string>): Promise<T> {
       return fetch(API, {
         method: 'POST',
         credentials: 'include',
         headers: {'content-type': 'application/x-www-form-urlencoded'},
         body: new URLSearchParams(Object.assign({format: 'json', formatversion: '2'}, params)),
-      }).then(response => response.json() as Promise<ParseResponse>)
+      }).then(response => response.json() as Promise<T>)
+    }
+
+    /** Fetch a single revision (by id) or the latest one (by title). */
+    async function queryRevision(
+      by: {revid?: number; title?: string},
+    ): Promise<RevisionInfo | undefined> {
+      const params: Record<string, string> = {
+        action: 'query',
+        prop: 'revisions',
+        rvprop: 'ids|content',
+        rvslots: 'main',
+      }
+      if (by.revid !== undefined) {
+        params.revids = String(by.revid)
+      } else if (by.title !== undefined) {
+        params.titles = by.title
+        params.rvlimit = '1'
+      } else {
+        return undefined
+      }
+      const data = await apiPost<RevisionQueryResponse>(params)
+      if (data.error) {
+        throw new Error(`${data.error.code || 'error'}: ${data.error.info || ''}`)
+      }
+      const revision = data.query?.pages?.[0]?.revisions?.[0]
+      if (!revision || typeof revision.revid !== 'number') return undefined
+      return {
+        revid: revision.revid,
+        parentid: revision.parentid,
+        content: revision.content ?? revision.slots?.main?.content,
+      }
+    }
+
+    /**
+     * `newrevid` is part of the API response but missing from the library
+     * typings, so narrow the payload field by field instead of asserting.
+     */
+    function readEditResult(value: unknown): EditResult {
+      const edit: EditResult = {}
+      if (!value || typeof value !== 'object') return edit
+      if ('newrevid' in value) {
+        const revid = value.newrevid
+        if (typeof revid === 'number' && Number.isInteger(revid) && revid > 0) {
+          edit.newrevid = revid
+        }
+      }
+      if ('nochange' in value) edit.nochange = value.nochange === true
+      return edit
+    }
+
+    /**
+     * Cleanup of the temp file must be tied to a revision id that exists on the
+     * wiki. The id reported by the edit call is the proof that this submit was
+     * stored; when the edit reports no new revision, only accept the latest
+     * revision if it already holds exactly the submitted text.
+     */
+    async function savedRevid(
+      title: string,
+      text: string,
+      edit: EditResult,
+      baseRevid: number | undefined,
+    ): Promise<number | undefined> {
+      const newrevid = edit.newrevid
+      if (newrevid !== undefined && newrevid !== baseRevid) {
+        try {
+          const revision = await queryRevision({revid: newrevid})
+          if (revision?.revid === newrevid) return newrevid
+        } catch {}
+      }
+      if (edit.nochange) {
+        try {
+          const latest = await queryRevision({title})
+          if (latest && latest.content === text) return latest.revid
+        } catch {}
+      }
+      return undefined
     }
 
     function fetchSiteInfo(): Promise<unknown> {
@@ -1609,16 +1713,29 @@ export default {
           return
         }
         if (latest) session.wikiPage = latest
-        await session.wikiPage.edit({
+        const result = await session.wikiPage.edit({
           text,
           summary: summary || '',
           minor: !!minor,
           watchlist: session.watchlist || parseWatchlist('nochange'),
         })
-          session.text = text
+        const edit = readEditResult(result.data?.edit)
+        session.text = text
         session.changed = false
         session.conflict = false
-        storePendingConfirm(sessionId)
+        // The temp file may only be cleaned up once a revision id proves the
+        // save landed; anything else keeps it for a retry.
+        const revid = await savedRevid(session.title, text, edit, baseRevid)
+        if (revid === undefined) {
+          setBusy(false)
+          const message = translate(
+            'The save was submitted but no revision id could be confirmed; the temp file was kept',
+          )
+          setStatus(translate('Save unconfirmed: {{ $1 }}', message), 'error')
+          send({type: 'save-result', sessionId, requestId, ok: false, error: message})
+          return
+        }
+        storePendingConfirm(sessionId, revid)
         send({type: 'save-result', sessionId, requestId, ok: true})
         send({
           type: 'finish',
@@ -1634,17 +1751,16 @@ export default {
           return
         }
         const shown = await renderPreview()
-        if (shown) {
-          setStatus(translate('Saved; the new content is now shown'), 'ok')
-          sendPendingConfirm()
-        } else {
-          setStatus(
-            translate(
-              'Saved, but the new content could not be confirmed. The temp file is kept and will be confirmed after the page reloads.',
-            ),
-            'error',
-          )
-        }
+        setStatus(
+          shown
+            ? translate('Saved; the new content is now shown')
+            : translate(
+                'Saved; the preview could not be refreshed, but revision {{ $1 }} is confirmed',
+                String(revid),
+              ),
+          shown ? 'ok' : 'error',
+        )
+        sendPendingConfirm()
         setBusy(false)
         endSession()
       } catch (error) {

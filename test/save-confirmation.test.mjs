@@ -105,7 +105,10 @@ test('saved finish keeps the temp file until the browser confirms the new page',
   assert.equal(messages.at(-1).type, 'session-result');
   assert.equal(messages.at(-1).session, null);
 
-  await controller.confirmSaved({sessionId: 's1', origin: 'https://example.org'}, ws);
+  await controller.confirmSaved(
+    {sessionId: 's1', origin: 'https://example.org', revid: 42},
+    ws
+  );
   assert.equal(fs.existsSync(fsPath), false);
   assert.equal(manager.get('s1'), undefined);
   assert.deepEqual(deleted, [fsPath]);
@@ -128,11 +131,30 @@ test('confirmation sends finish when the page should close', async () => {
   manager.attach('s1', ws);
   manager.get('s1').closePageOnConfirm = true;
   await controller.finish({sessionId: 's1', result: 'saved'});
-  await controller.confirmSaved({sessionId: 's1', origin: 'https://example.org'}, ws);
+  await controller.confirmSaved(
+    {sessionId: 's1', origin: 'https://example.org', revid: 42},
+    ws
+  );
   assert.equal(fs.existsSync(fsPath), false);
   assert.ok(
     messages.some(message => message.type === 'finish' && message.result === 'saved'),
   );
+  fs.rmSync(dir, {recursive: true, force: true});
+});
+
+test('a confirmation without a revision id keeps the temp file', async () => {
+  const {dir, fsPath, manager, controller, deleted, ws, messages} = fixture();
+  await controller.finish({sessionId: 's1', result: 'saved'});
+  await controller.confirmSaved({sessionId: 's1', origin: 'https://example.org'}, ws);
+  assert.equal(fs.existsSync(fsPath), true);
+  assert.ok(manager.get('s1'));
+  assert.deepEqual(deleted, []);
+  assert.deepEqual(messages.at(-1), {
+    type: 'save-confirmed-result',
+    sessionId: 's1',
+    ok: false,
+    error: 'The confirmation carried no revision id; the temp file was kept',
+  });
   fs.rmSync(dir, {recursive: true, force: true});
 });
 
@@ -149,7 +171,10 @@ test('post-save local edits keep the file as a draft even after confirmation', a
   const {dir, fsPath, manager, controller, deleted, vscode, ws} = fixture();
   await controller.finish({sessionId: 's1', result: 'saved'});
   vscode.workspace.textDocuments.push({uri: {fsPath}, isDirty: true});
-  await controller.confirmSaved({sessionId: 's1', origin: 'https://example.org'}, ws);
+  await controller.confirmSaved(
+    {sessionId: 's1', origin: 'https://example.org', revid: 42},
+    ws
+  );
   assert.equal(fs.existsSync(fsPath), true);
   assert.equal(manager.get('s1')?.state, 'draft');
   assert.deepEqual(deleted, []);

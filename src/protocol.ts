@@ -98,6 +98,8 @@ export interface ConflictMessage {
 export interface SaveConfirmedMessage {
   type: 'save-confirmed';
   sessionId: string;
+  /** Revision created by the save; the temp file is only removed once it is present. */
+  revid?: number;
   origin?: string;
 }
 

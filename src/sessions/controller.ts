@@ -330,6 +330,14 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
       if (ws.origin && meta.wiki.origin && !sameOrigin(meta.wiki.origin, ws.origin)) {
         throw new Error(vscode.l10n.t('The session does not belong to the current site'));
       }
+      const revid = msg.revid;
+      if (typeof revid !== 'number' || !Number.isInteger(revid) || revid <= 0) {
+        throw new Error(
+          vscode.l10n.t(
+            'The confirmation carried no revision id; the temp file was kept',
+          ),
+        );
+      }
       const doc = vscode.workspace.textDocuments.find(
         document => document.uri.fsPath === meta.fsPath,
       );
@@ -351,7 +359,10 @@ export function createSessionController(deps: SessionControllerDeps): SessionCon
       sessionManager.remove(msg.sessionId);
       await closeAndDelete(meta.fsPath);
       vscode.window.setStatusBarMessage(
-        vscode.l10n.t('MediaWiki: The browser shows the new content; the temp file was cleaned up'),
+        vscode.l10n.t(
+          'MediaWiki: Confirmed revision {0}; the temp file was cleaned up',
+          String(revid),
+        ),
         5000,
       );
       reply({ok: true});

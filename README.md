@@ -81,7 +81,7 @@ stateDiagram-v2
     Attached --> Draft: 编辑器 close（VSC 未关闭）<br/>保存失败（不删除文件）
     Draft --> Attached: 恢复草稿 / query 接管
     Attached --> Awaiting: finish, saved
-    Awaiting --> Completed: save-confirmed, 删除临时文件
+    Awaiting --> Completed: save-confirmed + revid, 删除临时文件
     Awaiting --> Attached: conflict, 内容加入合并编辑器
   
     Offline --> Attached: 手动恢复编辑会话
@@ -93,7 +93,7 @@ stateDiagram-v2
 | `Attached` | 浏览器 WebSocket 已连接，当前窗口正在编辑 |
 | `Detached` | 会话还在，但浏览器连接已断开 |
 | `Draft` | VSCode 编辑器已关闭，临时文件保留为草稿 |
-| `Awaiting` | 已提交成功，等待浏览器刷新并确认新内容 |
+| `Awaiting` | 已提交成功，等待浏览器携带新修订版本号（revid）确认；确认后才删除临时文件 |
 
 
 
