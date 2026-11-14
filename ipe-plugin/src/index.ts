@@ -1,340 +1,61 @@
-import type {
-  IPEModal,
-  InPageEdit,
-  IWikiPage,
-  WatchlistAction,
-} from '@inpageedit/core'
+import type {InPageEdit, IWikiPage, WatchlistAction} from '@inpageedit/core'
+import {createApi} from './api'
+import {BAR_STYLE_ID, createBarUi} from './bar'
+import type {SaveForm} from './bar'
 import {messages} from './i18n'
+import {
+  consumeAutoEdit,
+  editUrlFor,
+  highlightSection,
+  highlightTemplate,
+  isArticleLink,
+  scrollToOccurrence,
+  textAtPoint,
+} from './locate'
+import {apiUrl, getMwConfig, getMwUtil} from './mw'
+import {createPreview} from './preview'
+import type {
+  EditResult,
+  IncomingMessage,
+  NavigateEditMessage,
+  OutgoingMessage,
+  PendingConfirm,
+  Session,
+  SessionInfo,
+  SessionQueryResult,
+  SessionResultMessage,
+  TemplatesUsedService,
+  Waiter,
+  WikiRegisteredMessage,
+} from './types'
 
 const WS_URL = 'ws://127.0.0.1:8927'
 const RECONNECT_MS = 5000
 const PENDING_CONFIRM_KEY = 'mwe-ipe-pending-save-confirmation'
-
-interface MwConfig {
-  get<T = unknown>(key: string): T | undefined
-}
-
-interface MwUtil {
-  wikiScript(script: string): string
-  getUrl(title: string): string
-}
-
-interface MwHook {
-  fire(...args: unknown[]): void
-}
-
-interface MwHookFactory {
-  (name: string): MwHook
-}
-
-interface MediaWiki {
-  config?: MwConfig
-  util?: MwUtil
-  hook?: MwHookFactory
-}
-
-interface BrowserWindow extends Window {
-  mw?: MediaWiki
-  jQuery?: (root: Element) => unknown
-}
-
-interface SiteError {
-  code?: string
-  info?: string
-}
-
-interface SiteInfoResponse {
-  error?: SiteError
-  query?: unknown
-}
-
-interface ParseResponse {
-  parse?: {
-    text?: string
-    images?: string[]
-  }
-}
-
-interface SessionInfo {
-  sessionId: string
-  title: string
-  text: string
-  dirty?: boolean
-  revid?: number
-  basetimestamp?: string
-  starttimestamp?: string
-}
-
-interface Session {
-  id: string
-  title: string
-  text: string
-  wikiPage: IWikiPage
-  remoteDirty: boolean
-  changed: boolean
-  busy: boolean
-  conflict?: boolean
-  watchlist?: WatchlistAction
-  fullOriginal?: Node[]
-}
-
-interface PendingConfirm {
-  sessionId: string
-  origin: string
-  /** Revision proven to hold the saved content; the temp file needs it. */
-  revid: number
-}
-
-interface EditResult {
-  newrevid?: number
-  nochange?: boolean
-}
-
-interface RevisionInfo {
-  revid: number
-  parentid?: number
-  content?: string
-  slots?: {main?: {content?: string}}
-}
-
-interface RevisionQueryResponse {
-  error?: SiteError
-  query?: {
-    pages?: Array<{missing?: boolean; revisions?: RevisionInfo[]}>
-  }
-}
-
-interface TextContext {
-  nodes: Array<{node: Text; start: number; end: number}>
-  norm: string
-  map: number[]
-}
-
-interface ScrollScope {
-  type: 'poem'
-  index: number
-}
-
-interface TemplatesUsedService {
-  showModal(options?: {title?: string; wikiPage?: IWikiPage}): unknown
-}
-
-interface WikiRegisteredMessage {
-  type: 'wiki-registered'
-  requestId: string
-  ok: boolean
-  error?: string
-}
-
-interface SessionResultMessage {
-  type: 'session-result'
-  requestId: string
-  ok: boolean
-  session?: SessionInfo | null
-  busy?: boolean
-  error?: string
-}
-
-interface SessionQueryResult {
-  session: SessionInfo | null
-  busy: boolean
-}
-
-interface NavigateEditMessage {
-  type: 'navigate-edit'
-  requestId: string
-  title: string
-  fragment?: string
-}
-
-interface UpdateMessage {
-  type: 'update'
-  sessionId: string
-  text: string
-}
-
-interface DirtyStateMessage {
-  type: 'state'
-  sessionId: string
-  dirty: boolean
-}
-
-interface ScrollTextMessage {
-  type: 'scroll'
-  kind?: 'text'
-  sessionId: string
-  text: string
-  occurrence: number
-  section?: string
-  scope?: ScrollScope
-  label?: string
-  labelOccurrence?: number
-  prev?: string
-  next?: string
-  template?: TemplateBlockTarget
-}
-
-interface ScrollSectionMessage {
-  type: 'scroll'
-  kind: 'section'
-  sessionId: string
-  section?: string
-}
-
-interface TemplateBlockTarget {
-  name: string
-  params: Record<string, string>
-  section: string
-  occurrence: number
-}
-
-interface ScrollTemplateMessage {
-  type: 'scroll'
-  kind: 'template'
-  sessionId: string
-  template: TemplateBlockTarget
-}
-
-type ScrollMessage =
-  | ScrollTextMessage
-  | ScrollSectionMessage
-  | ScrollTemplateMessage
-
-interface SaveMessage {
-  type: 'save'
-  sessionId: string
-  requestId?: string
-  text: string
-  summary?: string
-  minor?: boolean
-}
-
-interface FinishMessage {
-  type: 'finish'
-  sessionId: string
-  result: 'saved' | 'discarded' | 'unchanged' | 'closed'
-}
-
-interface EditorClosedMessage {
-  type: 'editor-closed'
-  sessionId: string
-}
-
-interface PreemptedMessage {
-  type: 'preempted'
-  sessionId: string
-}
-
-interface SaveConfirmedResultMessage {
-  type: 'save-confirmed-result'
-  sessionId: string
-  ok: boolean
-}
-
-type IncomingMessage =
-  | WikiRegisteredMessage
-  | SessionResultMessage
-  | NavigateEditMessage
-  | UpdateMessage
-  | DirtyStateMessage
-  | ScrollMessage
-  | SaveMessage
-  | FinishMessage
-  | EditorClosedMessage
-  | PreemptedMessage
-  | SaveConfirmedResultMessage
-
-type OutgoingMessage =
-  | {
-      type: 'register-wiki'
-      requestId: string
-      origin: string
-      api: string
-      name: string
-      siteinfo: unknown
-    }
-  | {
-      type: 'session-query'
-      requestId: string
-      origin: string
-      title: string | undefined
-      windowId: string
-    }
-  | {
-      type: 'open'
-      sessionId: string
-      title: string
-      text: string
-      revid?: number
-      basetimestamp?: string
-      starttimestamp: string
-      windowId: string
-      wiki: string
-    }
-  | {
-      type: 'save-result'
-      sessionId: string
-      requestId?: string
-      ok: boolean
-      error?: string
-    }
-  | {
-      type: 'finish'
-      sessionId: string
-      result: 'saved' | 'discarded' | 'unchanged'
-      summary?: string
-      minor?: boolean
-    }
-  | {type: 'request-save'; sessionId: string; summary?: string; minor?: boolean}
-  | {
-      type: 'conflict'
-      sessionId: string
-      remoteText: string
-      remoteRevid?: number
-      remoteTimestamp?: string
-      message?: string
-    }
-  | {
-      type: 'locate'
-      sessionId: string
-      text: string
-      section?: string
-      occurrence?: number
-    }
-  | {type: 'save-confirmed'; sessionId: string; revid: number; origin: string}
-  | {type: 'open-result'; requestId: string; opened: boolean}
-
-interface Waiter<T> {
-  resolve(value: T): void
-  reject(error: Error): void
-  timer: number
-  query?: T
-}
-
-type CaretDocument = Document & {
-  caretRangeFromPoint?: (x: number, y: number) => Range | null
-}
-
-const browserWindow = window as unknown as BrowserWindow
-
-const getMw = (): MediaWiki | undefined => browserWindow.mw
-const getMwConfig = <T = unknown>(key: string): T | undefined => getMw()?.config?.get<T>(key)
-const getMwUtil = (): MwUtil | undefined => getMw()?.util
-const getJQuery = (): ((root: Element) => unknown) | undefined => browserWindow.jQuery
-
-function apiUrl(): string {
-  const util = getMwUtil()
-  return util?.wikiScript ? util.wikiScript('api') : new URL('/api.php', location.origin).href
-}
 
 function parseWatchlist(value: string): WatchlistAction {
   switch (value) {
     case 'preferences':
     case 'watch':
     case 'unwatch':
+      // WatchlistAction is a string enum and not a runtime export of the core
+      // package, so the narrowed literal still needs the enum cast.
       return value as WatchlistAction
     default:
       return 'nochange' as WatchlistAction
+  }
+}
+
+/** Build a session; transient flags default to a fresh editing state. */
+function createSession(
+  init: Pick<Session, 'id' | 'title' | 'text' | 'wikiPage'> & Partial<Session>,
+): Session {
+  return {
+    remoteDirty: false,
+    changed: false,
+    busy: false,
+    conflict: false,
+    ...init,
   }
 }
 
@@ -354,7 +75,8 @@ export default {
     for (const language of ['zh', 'zh-cn', 'zh-hans']) {
       i18n.setLanguageData(language, {[NAMESPACE]: messages})
     }
-    const API = apiUrl()
+
+    const api = createApi({apiUrl: apiUrl(), translate})
     const windowId = (() => {
       try {
         const key = 'mwe-ipe-window-id'
@@ -376,8 +98,6 @@ export default {
     let socket: WebSocket | null = null
     let connected = false
     let session: Session | null = null
-    let previewTimer: number | undefined
-    let previewSeq = 0
     let reconnectTimer: number | undefined
     let disposed = false
 
@@ -391,7 +111,28 @@ export default {
     let pendingConfirm: PendingConfirm | null = null
     let pendingAutoEdit = false
     let pendingConfirmSent = false
-    let barResizeObserver: ResizeObserver | null = null
+
+    const bar = createBarUi({
+      translate,
+      getSession: () => session,
+      actions: {
+        submit: form => requestSave(form),
+        cancel: () => cancelEdit(),
+        upload: () => {
+          void ctx.quickUpload?.showModal()
+        },
+        templates: () => showTemplatesUsed(),
+        images: () => showImagesUsed(),
+        diff: () => showDiff(),
+      },
+    })
+    const {ensureBar, refreshBar, setBusy, setStatus, syncBarHeight} = bar
+    const preview = createPreview({
+      translate,
+      request: params => api.request(params),
+      getSession: () => session,
+      setStatus,
+    })
 
     function readPendingConfirm(): PendingConfirm | null {
       try {
@@ -447,305 +188,18 @@ export default {
       }
     }
 
-    const barStyleId = 'mwe-ipe-bar-style'
-
-    function ensureBarStyle(): void {
-      let style = document.getElementById(barStyleId) as HTMLStyleElement | null
-      if (!style) {
-        style = document.createElement('style')
-        style.id = barStyleId
-        document.head.append(style)
-      }
-      style.textContent = [
-        '.mwe-ipe-bar{position:fixed;left:0;right:0;bottom:0;z-index:900;display:flex;gap:4px 8px;align-items:center;flex-wrap:wrap;background:#fff;border-top:2px solid #3366cc;padding:6px 12px;box-shadow:0 -2px 12px rgba(0,0,0,.15);font-size:13px;color:#202122;box-sizing:border-box;}',
-        '.mwe-ipe-bar .mwe-ipe-status{flex:1 1 200px;min-width:0;color:#72777d;line-height:1.35;white-space:normal;overflow-wrap:anywhere;}',
-        '.mwe-ipe-bar .mwe-ipe-status.error{color:#d33;}',
-        '.mwe-ipe-bar .mwe-ipe-status.ok{color:#14866d;}',
-        '.mwe-ipe-bar .mwe-ipe-controls{display:flex;flex:2 1 340px;flex-wrap:wrap;align-items:center;gap:6px;min-width:0;}',
-        '.mwe-ipe-bar .mwe-ipe-summary{display:flex;flex:1 1 200px;align-items:center;gap:6px;min-width:0;}',
-        '.mwe-ipe-bar .mwe-ipe-summary input[type=text]{flex:1 1 auto;min-width:0;padding:4px 8px;border:1px solid #a2a9b1;border-radius:4px;font-size:13px;}',
-        '.mwe-ipe-bar select{flex:0 0 auto;padding:4px 8px;border:1px solid #a2a9b1;border-radius:4px;background:#fff;font-size:13px;color:#202122;}',
-        '.mwe-ipe-bar button{flex:0 0 auto;padding:6px 14px;border-radius:4px;border:1px solid #a2a9b1;background:#f8f9fa;cursor:pointer;font-size:14px;color:#202122;}',
-        '.mwe-ipe-bar button:hover{background:#eaecf0;}',
-        '.mwe-ipe-bar button.is-primary{background:#3366cc;border-color:#3366cc;color:#fff;font-weight:600;}',
-        '.mwe-ipe-bar button.is-primary:hover{background:#2a56a8;}',
-        '.mwe-ipe-bar .mwe-ipe-cancel{margin-left:auto;}',
-        '.mwe-ipe-bar label{display:flex;align-items:center;gap:4px;white-space:nowrap;}',
-        '.mwe-ipe-bar .mwe-ipe-minor{gap:3px;font-size:11px;color:#54595d;}',
-        '.mwe-ipe-bar .mwe-ipe-more-wrap{position:relative;flex:0 0 auto;}',
-        '.mwe-ipe-bar .mwe-ipe-more{padding:6px 10px;font-size:16px;line-height:1;letter-spacing:1px;}',
-        '.mwe-ipe-bar .mwe-ipe-menu{position:absolute;bottom:100%;right:0;display:flex;flex-direction:column;gap:2px;min-width:150px;padding:4px;background:#fff;border:1px solid #a2a9b1;border-radius:4px;box-shadow:0 2px 10px rgba(0,0,0,.18);}',
-        '.mwe-ipe-bar .mwe-ipe-menu[hidden]{display:none;}',
-        '.mwe-ipe-bar .mwe-ipe-menu select{width:100%;}',
-        '.mwe-ipe-bar .mwe-ipe-menu-item{border:0;background:transparent;text-align:left;padding:6px 8px;border-radius:3px;font-size:13px;}',
-        '.mwe-ipe-bar .mwe-ipe-menu-item:hover{background:#eaecf0;}',
-        '@media (max-width:760px){.mwe-ipe-bar{padding:6px 10px;}.mwe-ipe-bar .mwe-ipe-status,.mwe-ipe-bar .mwe-ipe-controls,.mwe-ipe-bar .mwe-ipe-summary{flex-basis:100%;}}',
-        'body.mwe-ipe-editing{padding-bottom:calc(var(--mwe-ipe-bar-height, 96px) + 16px);}',
-        'body.mwe-ipe-editing #ipe-edit-toolbox{bottom:var(--mwe-ipe-bar-height, 96px);transform:none;}',
-      ].join('\n')
-    }
-
-    function refreshBar(): void {
-      const bar = document.querySelector('.mwe-ipe-bar')
-      if (!bar || !session) return
-      const submit = bar.querySelector<HTMLButtonElement>('.mwe-ipe-submit')
-      if (submit) submit.disabled = !!session.remoteDirty || !!session.busy
-      if (session.remoteDirty) {
-        setStatus(translate('VSCode has unsaved changes; save the file first (Ctrl+S)'))
-      }
-    }
-
-    function setBusy(busy: boolean): void {
-      if (session) session.busy = !!busy
-      const bar = document.querySelector('.mwe-ipe-bar')
-      if (!bar) return
-      bar.querySelectorAll('button').forEach(button => {
-        button.disabled = !!busy
-      })
-      if (busy) setStatus(translate('Submitting…'))
-    }
-
-    function setStatus(text: string, kind?: string): void {
-      const el = document.querySelector('.mwe-ipe-status')
-      if (!el) return
-      el.textContent = text || ''
-      el.className = 'mwe-ipe-status' + (kind ? ' ' + kind : '')
-      // The bar height changes when a long status wraps; keep the page padding
-      // in step even if the ResizeObserver callback is throttled.
-      syncBarHeight()
-    }
-
-    function attachBarMetrics(bar: HTMLElement): void {
-      document.body.classList.add('mwe-ipe-editing')
-      barResizeObserver?.disconnect()
-      barResizeObserver = new ResizeObserver(syncBarHeight)
-      barResizeObserver.observe(bar)
-      syncBarHeight()
-    }
-
-    function ensureBar(): HTMLDivElement {
-      ensureBarStyle()
-      let bar = document.querySelector<HTMLDivElement>('.mwe-ipe-bar')
-      if (bar) {
-        attachBarMetrics(bar)
-        return bar
-      }
-      bar = document.createElement('div')
-      bar.className = 'mwe-ipe-bar'
-      bar.innerHTML =
-        `<span class="mwe-ipe-status">${translate('Editing in VSCode')}</span>` +
-        '<div class="mwe-ipe-controls">' +
-        '<div class="mwe-ipe-summary">' +
-        `<input type="text" class="mwe-ipe-summary-input" placeholder="${translate('Edit summary')}">` +
-        `<label class="mwe-ipe-minor"><input type="checkbox" class="mwe-ipe-minor-box"> ${translate('Minor edit')}</label>` +
-        '</div>' +
-        `<button class="mwe-ipe-diff">${translate('Diff')}</button>` +
-        '<div class="mwe-ipe-more-wrap">' +
-        `<button class="mwe-ipe-more" aria-haspopup="true" aria-expanded="false" aria-label="${translate('More')}" title="${translate('More')}">⋯</button>` +
-        '<div class="mwe-ipe-menu" hidden>' +
-        `<select class="mwe-ipe-watchlist" aria-label="${translate('Watchlist')}">` +
-        `<option value="preferences">${translate('Follow MediaWiki preference')}</option>` +
-        `<option value="nochange">${translate('Keep current status')}</option>` +
-        `<option value="watch">${translate('Add to watchlist')}</option>` +
-        `<option value="unwatch">${translate('Remove from watchlist')}</option>` +
-        '</select>' +
-        `<button class="mwe-ipe-menu-item mwe-ipe-upload">${translate('Quick upload')}</button>` +
-        `<button class="mwe-ipe-menu-item mwe-ipe-templates">${translate('Templates used')}</button>` +
-        `<button class="mwe-ipe-menu-item mwe-ipe-images">${translate('Images used')}</button>` +
-        '</div>' +
-        '</div>' +
-        `<button class="mwe-ipe-cancel">${translate('Cancel')}</button>` +
-        `<button class="mwe-ipe-submit is-primary">${translate('Submit')}</button>` +
-        '</div>' +
-        '</div>'
-      document.body.append(bar)
-      attachBarMetrics(bar)
-      bar.querySelector('.mwe-ipe-submit')?.addEventListener('click', () => {
-        requestSave(bar)
-      })
-      bar.querySelector('.mwe-ipe-cancel')?.addEventListener('click', () => {
-        cancelEdit()
-      })
-      bar.querySelector('.mwe-ipe-upload')?.addEventListener('click', () => {
-        void ctx.quickUpload?.showModal()
-      })
-      bar.querySelector('.mwe-ipe-templates')?.addEventListener('click', () => {
-        if (!session) return
-        void templatesUsed?.showModal({title: session.title})
-      })
-      bar.querySelector('.mwe-ipe-images')?.addEventListener('click', () => {
-        showImagesUsed()
-      })
-      bar.querySelector('.mwe-ipe-diff')?.addEventListener('click', () => {
-        if (!session) return
-        const from = session.wikiPage.revisions[0]?.content || ''
-        if (from === session.text) return
-        ctx.quickDiff?.comparePages({
-          fromtitle: session.title,
-          fromtext: from,
-          totitle: session.title,
-          totext: session.text,
-          topst: true,
-        })
-      })
-      const moreWrap = bar.querySelector<HTMLElement>('.mwe-ipe-more-wrap')
-      const moreButton = bar.querySelector<HTMLButtonElement>('.mwe-ipe-more')
-      const menu = bar.querySelector<HTMLElement>('.mwe-ipe-menu')
-      let menuTimer: number | undefined
-      const setMenu = (open: boolean): void => {
-        if (!menu) return
-        menu.hidden = !open
-        moreButton?.setAttribute('aria-expanded', String(open))
-      }
-      const openMenu = (): void => {
-        window.clearTimeout(menuTimer)
-        setMenu(true)
-      }
-      const closeMenuSoon = (): void => {
-        window.clearTimeout(menuTimer)
-        menuTimer = window.setTimeout(() => setMenu(false), 120)
-      }
-      moreWrap?.addEventListener('mouseenter', openMenu)
-      moreWrap?.addEventListener('mouseleave', closeMenuSoon)
-      moreButton?.addEventListener('click', event => {
-        event.stopPropagation()
-        window.clearTimeout(menuTimer)
-        setMenu(!!menu?.hidden)
-      })
-      menu?.addEventListener('click', event => {
-        // Keep the native watchlist dropdown open while picking an option.
-        if (event.target instanceof Element && event.target.closest('select')) return
-        window.clearTimeout(menuTimer)
-        setMenu(false)
-      })
-      menu?.addEventListener('change', () => {
-        window.clearTimeout(menuTimer)
-        setMenu(false)
-      })
-      bar.addEventListener('click', event => {
-        if (event.target instanceof Element && event.target.closest('.mwe-ipe-more-wrap')) return
-        window.clearTimeout(menuTimer)
-        setMenu(false)
-      })
-      return bar
-    }
-
-    function status(text: string, kind?: string): void {
-      setStatus(text, kind)
-    }
-
-    // ---------- API ----------
-    function apiPost<T = ParseResponse>(params: Record<string, string>): Promise<T> {
-      return fetch(API, {
-        method: 'POST',
-        credentials: 'include',
-        headers: {'content-type': 'application/x-www-form-urlencoded'},
-        body: new URLSearchParams(Object.assign({format: 'json', formatversion: '2'}, params)),
-      }).then(response => response.json() as Promise<T>)
-    }
-
-    /** Fetch a single revision (by id) or the latest one (by title). */
-    async function queryRevision(
-      by: {revid?: number; title?: string},
-    ): Promise<RevisionInfo | undefined> {
-      const params: Record<string, string> = {
-        action: 'query',
-        prop: 'revisions',
-        rvprop: 'ids|content',
-        rvslots: 'main',
-      }
-      if (by.revid !== undefined) {
-        params.revids = String(by.revid)
-      } else if (by.title !== undefined) {
-        params.titles = by.title
-        params.rvlimit = '1'
-      } else {
-        return undefined
-      }
-      const data = await apiPost<RevisionQueryResponse>(params)
-      if (data.error) {
-        throw new Error(`${data.error.code || 'error'}: ${data.error.info || ''}`)
-      }
-      const revision = data.query?.pages?.[0]?.revisions?.[0]
-      if (!revision || typeof revision.revid !== 'number') return undefined
-      return {
-        revid: revision.revid,
-        parentid: revision.parentid,
-        content: revision.content ?? revision.slots?.main?.content,
-      }
-    }
-
     /**
-     * `newrevid` is part of the API response but missing from the library
-     * typings, so narrow the payload field by field instead of asserting.
+     * IPE's notify options intersect IPEModalOptions with a different position
+     * union, so `position` cannot be typed through; its default is already
+     * "top right", which is what the notices below want.
      */
-    function readEditResult(value: unknown): EditResult {
-      const edit: EditResult = {}
-      if (!value || typeof value !== 'object') return edit
-      if ('newrevid' in value) {
-        const revid = value.newrevid
-        if (typeof revid === 'number' && Number.isInteger(revid) && revid > 0) {
-          edit.newrevid = revid
-        }
-      }
-      if ('nochange' in value) edit.nochange = value.nochange === true
-      return edit
+    interface NotifyOptions {
+      title?: string
+      content?: string | Element
+      closeAfter?: {time: number; resetOnHover?: boolean}
     }
-
-    /**
-     * Cleanup of the temp file must be tied to a revision id that exists on the
-     * wiki. The id reported by the edit call is the proof that this submit was
-     * stored; when the edit reports no new revision, only accept the latest
-     * revision if it already holds exactly the submitted text.
-     */
-    async function savedRevid(
-      title: string,
-      text: string,
-      edit: EditResult,
-      baseRevid: number | undefined,
-    ): Promise<number | undefined> {
-      const newrevid = edit.newrevid
-      if (newrevid !== undefined && newrevid !== baseRevid) {
-        try {
-          const revision = await queryRevision({revid: newrevid})
-          if (revision?.revid === newrevid) return newrevid
-        } catch {}
-      }
-      if (edit.nochange) {
-        try {
-          const latest = await queryRevision({title})
-          if (latest && latest.content === text) return latest.revid
-        } catch {}
-      }
-      return undefined
-    }
-
-    function fetchSiteInfo(): Promise<unknown> {
-      const params = new URLSearchParams({
-        action: 'query',
-        meta: 'siteinfo',
-        siprop: 'general|namespaces|namespacealiases|magicwords|functionhooks|extensiontags|variables|interwikimap',
-        format: 'json',
-        formatversion: '2',
-      })
-      const controller = typeof AbortController === 'function' ? new AbortController() : null
-      const timer = controller ? window.setTimeout(() => controller.abort(), 20000) : null
-      return fetch(`${API}?${params}`, {
-        credentials: 'include',
-        signal: controller?.signal,
-      })
-        .then(response => {
-          if (!response.ok) throw new Error(`HTTP ${response.status}`)
-          return response.json() as Promise<SiteInfoResponse>
-        })
-        .then(data => {
-          if (data.error) throw new Error(`${data.error.code}: ${data.error.info}`)
-          if (!data.query) throw new Error(translate('The site did not return siteinfo'))
-          return data.query
-        })
-        .finally(() => {
-          if (timer) clearTimeout(timer)
-        })
+    function notifyWarning(options: NotifyOptions): void {
+      ctx.modal?.notify('warning', options)
     }
 
     function notifyOffline(message?: string, title?: string): void {
@@ -754,13 +208,12 @@ export default {
         translate(
           'VSCode extension is not connected. Open VSCode and make sure the MediaWiki extension is installed and enabled.',
         )
-      if (ctx.modal?.notify) {
-        ctx.modal.notify('warning', {
+      if (ctx.modal) {
+        notifyWarning({
           title: title || translate('VSCode not connected'),
           content: text,
-          position: 'top right',
           closeAfter: {time: 8000, resetOnHover: true},
-        } as Parameters<typeof ctx.modal.notify>[1])
+        })
         return
       }
       const old = document.getElementById('mwe-offline-notice')
@@ -781,13 +234,12 @@ export default {
       link.rel = 'noopener'
       link.textContent = translate('Open target page')
       link.style.cssText = 'color:#36c;text-decoration:underline;cursor:pointer;'
-      if (ctx.modal?.notify) {
-        ctx.modal.notify('warning', {
+      if (ctx.modal) {
+        notifyWarning({
           title: translate('Popup blocked'),
           content: link,
-          position: 'top right',
           closeAfter: {time: 10000, resetOnHover: true},
-        } as Parameters<typeof ctx.modal.notify>[1])
+        })
       } else {
         notifyOffline(
           translate('The popup was blocked; open the target page manually.'),
@@ -824,24 +276,24 @@ export default {
     function ensureWikiRegistered(): Promise<unknown> {
       if (registeredWiki) return Promise.resolve(registeredWiki)
       if (registeringWiki) return registeringWiki
-      registeringWiki = fetchSiteInfo()
+      registeringWiki = api.fetchSiteInfo()
         .then(query => {
           const requestId = `reg-${Date.now()}-${++registerSeq}`
-          return new Promise<unknown>((resolve, reject) => {
-            const timer = window.setTimeout(() => {
-              delete registerWaiters[requestId]
-              reject(new Error(translate('Extension did not respond to site registration')))
-            }, 15000)
-            registerWaiters[requestId] = {resolve, reject, timer, query}
-            send({
-              type: 'register-wiki',
-              requestId,
-              origin: location.origin,
-              api: API,
-              name: getMwConfig<string>('wgSiteName') || location.host,
-              siteinfo: query,
-            })
+          const {promise, resolve, reject} = Promise.withResolvers<unknown>()
+          const timer = window.setTimeout(() => {
+            delete registerWaiters[requestId]
+            reject(new Error(translate('Extension did not respond to site registration')))
+          }, 15000)
+          registerWaiters[requestId] = {resolve, reject, timer, query}
+          send({
+            type: 'register-wiki',
+            requestId,
+            origin: location.origin,
+            api: apiUrl(),
+            name: getMwConfig<string>('wgSiteName') || location.host,
+            siteinfo: query,
           })
+          return promise
         })
         .then(query => {
           registeredWiki = query
@@ -901,10 +353,10 @@ export default {
             }
           } catch (error) {
             const detail = error instanceof Error ? error.message : String(error)
-            status(translate('Site registration failed: {{ $1 }}', detail), 'error')
+            setStatus(translate('Site registration failed: {{ $1 }}', detail), 'error')
           }
           if (session) {
-            restorePage()
+            preview.restorePage()
             endSession()
             notifyOffline(
               translate('The extension no longer has this session; editing has been closed.'),
@@ -954,7 +406,7 @@ export default {
         if (msg.type === 'update') {
           session.text = msg.text
           session.changed = true
-          schedulePreview()
+          preview.schedulePreview()
         } else if (msg.type === 'state') {
           session.remoteDirty = !!msg.dirty
           refreshBar()
@@ -980,16 +432,16 @@ export default {
           setStatus(translate('Submitting…'))
           void saveEdit(msg.text, msg.summary, msg.minor, msg.requestId)
         } else if (msg.type === 'finish') {
-          if (msg.result === 'closed') restorePage()
+          if (msg.result === 'closed') preview.restorePage()
           endSession()
           if (msg.result !== 'closed') closeIfOpenedHere()
         } else if (msg.type === 'editor-closed') {
-          restorePage()
+          preview.restorePage()
           endSession()
           closeIfOpenedHere()
           notifyOffline(translate('Exited editing mode.'), translate('Editor closed'))
         } else if (msg.type === 'preempted') {
-          restorePage()
+          preview.restorePage()
           endSession()
           notifyOffline(
             translate('Editing continued in another tab.'),
@@ -1007,479 +459,10 @@ export default {
       return false
     }
 
-    // ---------- text context / locate ----------
-    function drawBox(rect: DOMRect): boolean {
-      if (!rect || (!rect.width && !rect.height)) return false
-      const top = rect.top + window.scrollY
-      const left = rect.left + window.scrollX
-      window.scrollTo({
-        top: Math.max(0, top - window.innerHeight / 2 + rect.height / 2),
-        behavior: 'auto',
-      })
-      const box = document.createElement('div')
-      box.style.cssText =
-        `position:absolute;left:${left}px;top:${top}px;width:${rect.width}px;height:${rect.height}px;` +
-        'pointer-events:none;z-index:899;outline:2px solid #3366cc;' +
-        'background:rgba(51,102,204,.15);border-radius:2px;'
-      document.body.append(box)
-      window.setTimeout(() => box.remove(), 1600)
-      return true
-    }
-
-    function revealHidden(element: Element): boolean {
-      let node: Element | null = element
-      while (node && node !== document.body) {
-        const style = window.getComputedStyle(node)
-        if (style.display === 'none') {
-          const toggle = node.querySelector('.mw-collapsible-toggle a')
-          if (toggle) {
-            ;(toggle as HTMLElement).click()
-            return true
-          }
-          ;(node as HTMLElement).style.display = ''
-          return true
-        }
-        node = node.parentElement
-      }
-      return false
-    }
-
-    function buildTextContext(root: Element, scopeRange?: Range): TextContext {
-      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
-      const nodes: Array<{node: Text; start: number; end: number}> = []
-      let raw = ''
-      let node: Node | null
-      while ((node = walker.nextNode())) {
-        const parent = (node as Text).parentElement
-        if (parent?.closest('script,style,.vc-preview')) continue
-        if (scopeRange && !scopeRange.intersectsNode(node)) continue
-        const start = raw.length
-        raw += node.nodeValue || ''
-        nodes.push({node: node as Text, start, end: raw.length})
-      }
-      let norm = ''
-      const map: number[] = []
-      let space = false
-      for (let index = 0; index < raw.length; index++) {
-        if (/\s/.test(raw[index])) {
-          if (!space) {
-            norm += ' '
-            map.push(index)
-            space = true
-          }
-        } else {
-          norm += raw[index]
-          map.push(index)
-          space = false
-        }
-      }
-      return {nodes, norm, map}
-    }
-
-    function findRangeIn(context: TextContext, needle: string, occurrence: number): Range | null {
-      const text = String(needle || '').replace(/\s+/g, ' ').trim()
-      if (!text) return null
-      let index = -1
-      let seen = 0
-      while ((index = context.norm.indexOf(text, index + 1)) >= 0) {
-        seen++
-        if (seen < occurrence) continue
-        const rawStart = context.map[index]
-        const rawEnd =
-          (context.map[Math.min(index + text.length - 1, context.map.length - 1)] || rawStart) + 1
-        const head = context.nodes.find(item => rawStart >= item.start && rawStart < item.end)
-        const tail = context.nodes.find(item => rawEnd <= item.end && rawEnd > item.start)
-        if (!head || !tail) continue
-        const range = document.createRange()
-        range.setStart(head.node, rawStart - head.start)
-        range.setEnd(tail.node, rawEnd - tail.start)
-        return range
-      }
-      return null
-    }
-
-    function headingText(heading: Element): string {
-      const clone = heading.cloneNode(true) as Element
-      clone.querySelectorAll('.mw-editsection').forEach(item => item.remove())
-      return clone.textContent?.replace(/\s+/g, ' ').trim() || ''
-    }
-
-    function sectionRange(scope?: string): Range | undefined {
-      const root = document.querySelector('#mw-content-text')
-      if (!scope || !root) return undefined
-      const headings = [...root.querySelectorAll('h2')]
-      const index = headings.findIndex(heading => headingText(heading) === scope)
-      if (index < 0) return undefined
-      const range = document.createRange()
-      range.setStartBefore(headings[index])
-      const next = headings[index + 1]
-      if (next) range.setEndBefore(next)
-      else range.setEnd(root, root.childNodes.length)
-      return range
-    }
-
-    function highlightSection(section?: string): boolean {
-      const root = document.querySelector('#mw-content-text')
-      if (!root) return false
-      const headings = [...root.querySelectorAll('h2')]
-      const heading = section
-        ? headings.find(item => headingText(item) === section)
-        : undefined
-      const target =
-        heading?.nextElementSibling ||
-        heading ||
-        root.querySelector('p, .mw-parser-output > *')
-      return target ? drawBox(target.getBoundingClientRect()) : false
-    }
-
-    function compactText(value: string): string {
-      return value.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '')
-    }
-
-    function blockTitle(element: Element): string {
-      const title = element.querySelector(
-        '.navbox-title, caption, .infobox-title, .infoBoxTitle, .mbox-text, th',
-      )
-      return compactText(title?.textContent || '')
-    }
-
-    function highlightTemplate(target: TemplateBlockTarget): boolean {
-      const root = document.querySelector('#mw-content-text')
-      if (!root) return false
-      const range = sectionRange(target.section)
-      const selector = [
-        'table',
-        '.navbox',
-        '.infobox',
-        '.infoBox',
-        '.hatnote',
-        '.dablink',
-        '.mbox',
-        '.ambox',
-        '.cq-quote',
-        '[class*="quote"]',
-        '[class*="box"]',
-        '.pm-card',
-      ].join(',')
-      const name = compactText(target.name)
-      const entry = compactText(target.params?.['条目'] || '')
-      const params = Object.values(target.params)
-        .map(compactText)
-        .filter(value => value.length >= 2)
-      const scored: Array<{
-        element: Element
-        score: number
-        titleMatch: boolean
-        textMatch: boolean
-        entryMatch: boolean
-      }> = []
-      const entryMatches: typeof scored = []
-      const titleMatches: typeof scored = []
-      const textMatches: typeof scored = []
-      for (const element of root.querySelectorAll(selector)) {
-        if (range && !range.intersectsNode(element)) continue
-        const text = compactText(element.textContent || '')
-        if (!text) continue
-        const title = blockTitle(element)
-        const titleMatch = Boolean(name && title.includes(name))
-        const textMatch = Boolean(name && text.includes(name))
-        const entryMatch =
-          Boolean(entry) &&
-          element.matches('.pm-card') &&
-          compactText(element.querySelector('.pm-title, .pm-title-txt')?.textContent || '') ===
-            entry
-        let score = 0
-        if (titleMatch) score += 200
-        else if (textMatch) score += 80
-        if (entryMatch) score += 300
-        const matchedParams = params.filter(value => text.includes(value)).length
-        score += Math.min(8, matchedParams) * 10
-        const navbox = element.matches('table.navbox, .navbox')
-        if (navbox) score += 20
-        if (element.matches('.infobox, .infoBox')) score += 15
-        if (text.length > 100) score += 5
-        if (score >= 60) {
-          const candidate = {element, score, titleMatch, textMatch, entryMatch}
-          scored.push(candidate)
-          if (entryMatch) entryMatches.push(candidate)
-          if (titleMatch) titleMatches.push(candidate)
-          if (textMatch) textMatches.push(candidate)
-        }
-      }
-      // 纯参数命中不算数：只有块标题/正文含模板名，或条目参数与卡片标题一致，
-      // 才可能是真正的模板块；否则宁可不动，也不要跳到无关位置。
-      let pool = entryMatches.length
-        ? entryMatches
-        : titleMatches.length
-          ? titleMatches
-          : textMatches
-      if (!pool.length) return false
-      pool.sort((a, b) => b.score - a.score)
-      const chosen = pool[Math.min(target.occurrence - 1, pool.length - 1)]?.element
-      if (!(chosen instanceof HTMLElement)) return false
-      revealHidden(chosen)
-      return drawBox(chosen.getBoundingClientRect())
-    }
-
-    function scrollToOccurrence(
-      text: string,
-      occurrence: number,
-      section?: string,
-      scope?: ScrollScope,
-      label?: string,
-      prev?: string,
-      next?: string,
-      labelOccurrence?: number,
-    ): boolean {
-      if (!text) return false
-      const all = document.querySelector('#mw-content-text')
-      if (!all) return false
-      let root: Element = all
-      if (scope?.type === 'poem') {
-        const poem = all.querySelectorAll('.poem')[scope.index]
-        if (!poem) return false
-        root = poem
-      }
-      const wanted = Math.max(1, Number(occurrence) || 1)
-      const candidates: Array<{needle: string; occurrence: number}> = []
-      const push = (value: string | undefined, count: number): void => {
-        const needle = String(value || '').replace(/\s+/g, ' ').trim()
-        if (needle.length < 2) return
-        if (candidates.some(candidate => candidate.needle === needle)) return
-        candidates.push({needle, occurrence: count})
-      }
-      if (scope) {
-        push(text, wanted)
-      } else {
-        if (label) {
-          push(`${label} ${text}`, labelOccurrence || 1)
-          push(label + text, labelOccurrence || 1)
-        }
-        if (next) {
-          push(`${text} ${next}`, 1)
-          push(text + next, 1)
-        }
-        if (prev) {
-          push(`${prev} ${text}`, 1)
-          push(prev + text, 1)
-        }
-        push(text, wanted)
-      }
-      const scoped = sectionRange(section)
-      const context = buildTextContext(root, scoped)
-      for (const candidate of candidates) {
-        const range = findRangeIn(context, candidate.needle, candidate.occurrence)
-        if (!range) continue
-        const rect = range.getBoundingClientRect()
-        if (rect && (rect.width || rect.height)) {
-          if (drawBox(rect)) return true
-          continue
-        }
-        const element = range.startContainer.parentElement
-        if (element && revealHidden(element)) {
-          window.setTimeout(() => {
-            const again = findRangeIn(context, candidate.needle, candidate.occurrence)
-            if (again) drawBox(again.getBoundingClientRect())
-          }, 150)
-          return true
-        }
-      }
-      return false
-    }
-
-    function editUrlFor(href: string): string {
-      try {
-        const url = new URL(href, location.href)
-        url.searchParams.set('external-editor', '1')
-        return url.href
-      } catch {
-        return href
-      }
-    }
-
-    function consumeAutoEdit(): boolean {
-      const url = new URL(location.href)
-      if (url.searchParams.get('external-editor') !== '1') return false
-      url.searchParams.delete('external-editor')
-      url.searchParams.delete('external-editor-section')
-      try {
-        history.replaceState(null, '', url.pathname + url.search + url.hash)
-      } catch {}
-      return true
-    }
-
-    function isArticleLink(anchor: HTMLAnchorElement): boolean {
-      if (anchor.closest('.mw-editsection')) return false
-      if (anchor.classList.contains('new') || anchor.classList.contains('external')) return false
-      const url = new URL(anchor.href, location.href)
-      if (url.origin !== location.origin) return false
-      const query = url.searchParams
-      if (query.get('action') || query.get('oldid') || query.get('diff') || query.get('redlink')) {
-        return false
-      }
-      if (url.pathname.includes('/Special:') || url.pathname.includes('特殊:')) return false
-      if (url.pathname === location.pathname && url.hash) return false
-      return true
-    }
-
-    interface PointText {
-      text: string
-      section: string
-      occurrence: number
-    }
-
-    function sectionForPoint(node: Node): string {
-      const root = document.querySelector('#mw-content-text')
-      if (!root) return ''
-      const headings = [...root.querySelectorAll('h2')]
-      let section = ''
-      for (const heading of headings) {
-        if (heading.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING) {
-          section = headingText(heading)
-        }
-      }
-      return section
-    }
-
-    function textAtPoint(x: number, y: number): PointText | null {
-      const caretDocument = document as CaretDocument
-      let range: Range | null = null
-      if (caretDocument.caretRangeFromPoint) {
-        range = caretDocument.caretRangeFromPoint(x, y)
-      } else if (document.caretPositionFromPoint) {
-        const position = document.caretPositionFromPoint(x, y)
-        if (position) {
-          range = document.createRange()
-          range.setStart(position.offsetNode, position.offset)
-          range.collapse(true)
-        }
-      }
-      if (!range || range.startContainer.nodeType !== Node.TEXT_NODE) return null
-      const value = range.startContainer.nodeValue || ''
-      const index = range.startOffset || 0
-      const whole = value.replace(/\s+/g, ' ').trim()
-      const text =
-        whole.length >= 2 && whole.length <= 60
-          ? whole
-          : value
-              .slice(Math.max(0, index - 40), Math.min(value.length, index + 40))
-              .replace(/\s+/g, ' ')
-              .trim()
-      if (text.length < 2) return null
-      const section = sectionForPoint(range.startContainer)
-      let occurrence = 1
-      try {
-        const prefix = document.createRange()
-        const root = document.querySelector('#mw-content-text')
-        const heading = [...(root?.querySelectorAll('h2') || [])].find(item => headingText(item) === section)
-        if (heading) prefix.setStartBefore(heading)
-        else if (root) prefix.setStart(root, 0)
-        else prefix.setStart(range.startContainer, 0)
-        prefix.setEnd(range.startContainer, index)
-        const before = prefix.toString().replace(/\s+/g, ' ')
-        let cursor = 0
-        occurrence = 1
-        while ((cursor = before.indexOf(text, cursor)) >= 0) {
-          occurrence++
-          cursor += text.length
-        }
-      } catch {}
-      return {text, section, occurrence}
-    }
-
-    // ---------- preview ----------
-    function executeScripts(root: Element): void {
-      root.querySelectorAll<HTMLScriptElement>('script').forEach(old => {
-        if (old.dataset.mweExecuted) return
-        const script = document.createElement('script')
-        for (const attribute of Array.from(old.attributes)) {
-          script.setAttribute(attribute.name, attribute.value)
-        }
-        script.textContent = old.textContent
-        script.dataset.mweExecuted = '1'
-        old.replaceWith(script)
-      })
-    }
-
-    function applyFull(html: string): void {
-      const root = document.querySelector('#mw-content-text')
-      if (!root) return
-      if (session && !session.fullOriginal) {
-        session.fullOriginal = Array.from(root.childNodes)
-      }
-      const temp = document.createElement('div')
-      temp.innerHTML = html
-      root.replaceChildren(...Array.from(temp.childNodes))
-      executeScripts(root)
-      const mw = getMw()
-      const jQuery = getJQuery()
-      if (mw?.hook && jQuery) mw.hook('wikipage.content').fire(jQuery(root))
-    }
-
-    function schedulePreview(): void {
-      clearTimeout(previewTimer)
-      previewTimer = window.setTimeout(renderPreview, 250)
-    }
-
-    async function renderPreview(): Promise<boolean> {
-      if (!session) return false
-      const seq = ++previewSeq
-      let data: ParseResponse
-      try {
-        data = await apiPost({
-          action: 'parse',
-          contentmodel: 'wikitext',
-          title: session.title,
-          text: session.text,
-          pst: '1',
-          preview: '1',
-          disableeditsection: '1',
-          disablelimitreport: '1',
-          prop: 'text',
-        })
-      } catch (error) {
-        if (seq === previewSeq) {
-          const detail = error instanceof Error ? error.message : String(error)
-          status(translate('Preview failed: {{ $1 }}', detail))
-        }
-        return false
-      }
-      if (seq !== previewSeq || !data.parse?.text) return false
-      applyFull(data.parse.text)
-      setStatus(
-        session.conflict
-          ? translate(
-              'Edit conflict detected; conflict markers are loaded. Resolve them before submitting.',
-            )
-          : translate('Preview updated at {{ $1 }}', new Date().toLocaleTimeString()),
-        session.conflict ? 'error' : undefined,
-      )
-      return true
-    }
-
-    // ---------- edit session ----------
-    function restorePage(): void {
-      const root = document.querySelector('#mw-content-text')
-      if (root && session?.fullOriginal) {
-        root.replaceChildren(...session.fullOriginal)
-        session.fullOriginal = undefined
-      }
-    }
-
-    function syncBarHeight(): void {
-      const bar = document.querySelector<HTMLElement>('.mwe-ipe-bar')
-      document.documentElement.style.setProperty(
-        '--mwe-ipe-bar-height',
-        `${bar?.offsetHeight ?? 0}px`,
-      )
-    }
-
     function endSession(): void {
       session = null
-      clearTimeout(previewTimer)
-      barResizeObserver?.disconnect()
-      barResizeObserver = null
-      document.documentElement.style.removeProperty('--mwe-ipe-bar-height')
+      preview.cancel()
+      bar.detach()
       document.querySelector('.mwe-ipe-bar')?.remove()
       document.body.classList.remove('mwe-ipe-editing')
     }
@@ -1495,28 +478,29 @@ export default {
       if (!force && sessionQueryPromise) return sessionQueryPromise
       if (!connected) return Promise.resolve({session: null, busy: false})
       const requestId = `session-${Date.now()}-${++sessionQuerySeq}`
-      sessionQueryPromise = new Promise<SessionQueryResult>((resolve, reject) => {
-        const timer = window.setTimeout(() => {
-          delete sessionWaiters[requestId]
-          reject(new Error(translate('Extension did not respond to the session query')))
-        }, 8000)
-        sessionWaiters[requestId] = {resolve, reject, timer}
-        if (!send({
-          type: 'session-query',
-          requestId,
-          origin: location.origin,
-          title: getMwConfig<string>('wgPageName'),
-          windowId,
-        })) {
-          clearTimeout(timer)
-          delete sessionWaiters[requestId]
-          reject(new Error(translate('Extension not connected')))
-        }
-      }).catch(error => {
+      const {promise, resolve, reject} = Promise.withResolvers<SessionQueryResult>()
+      const timer = window.setTimeout(() => {
+        delete sessionWaiters[requestId]
+        reject(new Error(translate('Extension did not respond to the session query')))
+      }, 8000)
+      sessionWaiters[requestId] = {resolve, reject, timer}
+      if (!send({
+        type: 'session-query',
+        requestId,
+        origin: location.origin,
+        title: getMwConfig<string>('wgPageName'),
+        windowId,
+      })) {
+        clearTimeout(timer)
+        delete sessionWaiters[requestId]
+        reject(new Error(translate('Extension not connected')))
+      }
+      const query = promise.catch((error: unknown) => {
         sessionQueryPromise = null
         throw error
       })
-      return sessionQueryPromise
+      sessionQueryPromise = query
+      return query
     }
 
     function onSessionResult(msg: SessionResultMessage): void {
@@ -1537,23 +521,20 @@ export default {
           : await ctx.wikiPage.newFromTitle(info.title, false)
       } catch (error) {
         const detail = error instanceof Error ? error.message : String(error)
-        status(translate('Failed to resume the session: {{ $1 }}', detail), 'error')
+        setStatus(translate('Failed to resume the session: {{ $1 }}', detail), 'error')
         return
       }
-      session = {
+      session = createSession({
         id: info.sessionId,
         title: info.title,
         text: info.text,
         wikiPage,
         remoteDirty: !!info.dirty,
-        changed: false,
-        busy: false,
-        conflict: false,
-      }
-      showBar(null)
+      })
+      ensureBar()
       document.body.classList.remove('ipe-modal-no-scroll')
       setStatus(translate('Resumed the VSCode editing session'))
-      schedulePreview()
+      preview.schedulePreview()
     }
 
     async function beginPageEdit(auto = false): Promise<void> {
@@ -1587,17 +568,13 @@ export default {
         if (!title) throw new Error(translate('Unable to read the current page title'))
         const wikiPage = await ctx.wikiPage.newFromTitle(title, false)
         const revision = wikiPage.revisions[0]
-        session = {
+        session = createSession({
           id: `s${Date.now()}`,
           title,
           text: revision?.content || '',
           wikiPage,
-          remoteDirty: false,
-          changed: false,
-          busy: false,
-          conflict: false,
-        }
-        showBar(null)
+        })
+        ensureBar()
         document.body.classList.remove('ipe-modal-no-scroll')
         setStatus(translate('Editing in VSCode; save the file to refresh the preview'))
         send({
@@ -1617,17 +594,35 @@ export default {
           'Failed to start editing: {{ $1 }}. Make sure the VSCode extension is running and the web plugin is up to date.',
           detail,
         )
-        status(message, 'error')
+        setStatus(message, 'error')
         notifyOffline(message, translate('Failed to start editing'))
       }
+    }
+
+    function showTemplatesUsed(): void {
+      if (!session) return
+      void templatesUsed?.showModal({title: session.title})
+    }
+
+    function showDiff(): void {
+      if (!session) return
+      const from = session.wikiPage.revisions[0]?.content || ''
+      if (from === session.text) return
+      ctx.quickDiff?.comparePages({
+        fromtitle: session.title,
+        fromtext: from,
+        totitle: session.title,
+        totext: session.text,
+        topst: true,
+      })
     }
 
     function showImagesUsed(): void {
       if (!session || !ctx.modal) return
       fetch(
-        `${API}?action=parse&format=json&formatversion=2&prop=images&page=${encodeURIComponent(session.title)}`,
+        `${apiUrl()}?action=parse&format=json&formatversion=2&prop=images&page=${encodeURIComponent(session.title)}`,
       )
-        .then(response => response.json() as Promise<ParseResponse>)
+        .then(response => response.json() as Promise<{parse?: {images?: string[]}}>)
         .then(data => {
           const images = data.parse?.images || []
           const box = document.createElement('div')
@@ -1676,35 +671,25 @@ export default {
         sessionId: session.id,
         result: pending ? 'discarded' : 'unchanged',
       })
-      restorePage()
+      preview.restorePage()
       endSession()
       closeIfOpenedHere()
     }
 
-    function showBar(modal: IPEModal | null): void {
-      try {
-        modal?.close()
-      } catch {}
-      ensureBar()
-    }
-
-    function requestSave(bar: HTMLDivElement): void {
+    function requestSave(form: SaveForm): void {
       if (!session) return
       if (session.remoteDirty) {
         setStatus(translate('VSCode has unsaved changes; save the file first (Ctrl+S)'), 'error')
         return
       }
       setBusy(true)
-      const summaryInput = bar.querySelector<HTMLInputElement>('.mwe-ipe-summary-input')
-      const minorInput = bar.querySelector<HTMLInputElement>('.mwe-ipe-minor-box')
-      const watchInput = bar.querySelector<HTMLSelectElement>('.mwe-ipe-watchlist')
-      session.watchlist = parseWatchlist(watchInput?.value || 'nochange')
+      session.watchlist = parseWatchlist(form.watchlist)
       setStatus(translate('Saving the file…'))
       send({
         type: 'request-save',
         sessionId: session.id,
-        summary: summaryInput?.value || '',
-        minor: !!minorInput?.checked,
+        summary: form.summary,
+        minor: form.minor,
       })
     }
 
@@ -1726,10 +711,7 @@ export default {
       return ctx.wikiPage.newFromTitle(session.title, false, undefined, true)
     }
 
-    function reportConflict(
-      latest: IWikiPage,
-      message: string,
-    ): boolean {
+    function reportConflict(latest: IWikiPage, message: string): boolean {
       if (!session) return false
       const revision = latest.revisions[0]
       if (!revision) return false
@@ -1752,6 +734,90 @@ export default {
       return true
     }
 
+    /** Latest revision check that must pass before editing. */
+    async function latestForSave(): Promise<{
+      baseRevid: number | undefined
+      latest: IWikiPage | null
+      changedRemotely: boolean
+    }> {
+      const baseRevid = session?.wikiPage.revisions[0]?.revid
+      let latest: IWikiPage | null = null
+      try {
+        latest = await latestPageForSession()
+      } catch {}
+      const latestRevid = latest?.revisions[0]?.revid
+      return {
+        baseRevid,
+        latest,
+        changedRemotely:
+          baseRevid !== undefined &&
+          latestRevid !== undefined &&
+          latestRevid !== baseRevid &&
+          !!latest,
+      }
+    }
+
+    async function applyEdit(
+      text: string,
+      summary: string | undefined,
+      minor: boolean | undefined,
+    ): Promise<EditResult> {
+      if (!session) return {}
+      const result = await session.wikiPage.edit({
+        text,
+        summary: summary || '',
+        minor: !!minor,
+        watchlist: session.watchlist || parseWatchlist('nochange'),
+      })
+      return api.readEditResult(result.data?.edit)
+    }
+
+    function completeSave(
+      sessionId: string,
+      requestId: string | undefined,
+      revid: number,
+      summary: string | undefined,
+      minor: boolean | undefined,
+    ): void {
+      storePendingConfirm(sessionId, revid)
+      send({type: 'save-result', sessionId, requestId, ok: true})
+      send({
+        type: 'finish',
+        sessionId,
+        result: 'saved',
+        summary: summary || '',
+        minor: !!minor,
+      })
+      setStatus(translate('Saved; reloading and waiting for confirmation…'), 'ok')
+      setBusy(false)
+      window.setTimeout(() => location.reload(), 800)
+    }
+
+    function failSave(sessionId: string, requestId: string | undefined, message: string): void {
+      setBusy(false)
+      send({type: 'save-result', sessionId, requestId, ok: false, error: message})
+    }
+
+    async function handleSaveError(
+      sessionId: string,
+      requestId: string | undefined,
+      error: unknown,
+    ): Promise<void> {
+      const message = error instanceof Error ? error.message : String(error)
+      setBusy(false)
+      send({type: 'save-result', sessionId, requestId, ok: false, error: message})
+      let conflictSent = false
+      if (isEditConflict(error)) {
+        try {
+          const latest = await latestPageForSession()
+          if (latest) conflictSent = reportConflict(latest, message)
+        } catch {}
+      }
+      if (!conflictSent) {
+        setStatus(translate('Save failed: {{ $1 }}', message), 'error')
+      }
+    }
+
     async function saveEdit(
       text: string,
       summary: string | undefined,
@@ -1761,76 +827,35 @@ export default {
       if (!session) return
       const sessionId = session.id
       try {
-        const baseRevid = session.wikiPage.revisions[0]?.revid
-        let latest: IWikiPage | null = null
-        try {
-          latest = await latestPageForSession()
-        } catch {}
-        const latestRevid = latest?.revisions[0]?.revid
-        if (
-          baseRevid !== undefined &&
-          latestRevid !== undefined &&
-          latestRevid !== baseRevid &&
-          latest
-        ) {
+        const {baseRevid, latest, changedRemotely} = await latestForSave()
+        if (changedRemotely) {
           setBusy(false)
-          reportConflict(latest, translate('The page was changed by someone else.'))
+          reportConflict(latest!, translate('The page was changed by someone else.'))
           send({type: 'save-result', sessionId, requestId, ok: false, error: '编辑冲突'})
           return
         }
         if (latest) session.wikiPage = latest
-        const result = await session.wikiPage.edit({
-          text,
-          summary: summary || '',
-          minor: !!minor,
-          watchlist: session.watchlist || parseWatchlist('nochange'),
-        })
-        const edit = readEditResult(result.data?.edit)
+        const edit = await applyEdit(text, summary, minor)
         session.text = text
         session.changed = false
         session.conflict = false
         // The temp file may only be cleaned up once a revision id proves the
         // save landed; anything else keeps it for a retry.
-        const revid = await savedRevid(session.title, text, edit, baseRevid)
+        const revid = await api.savedRevid(session.title, text, edit, baseRevid)
         if (revid === undefined) {
-          setBusy(false)
           const message = translate(
             'The save was submitted but no revision id could be confirmed; the temp file was kept',
           )
+          failSave(sessionId, requestId, message)
           setStatus(translate('Save unconfirmed: {{ $1 }}', message), 'error')
-          send({type: 'save-result', sessionId, requestId, ok: false, error: message})
           return
         }
-        storePendingConfirm(sessionId, revid)
-        send({type: 'save-result', sessionId, requestId, ok: true})
-        send({
-          type: 'finish',
-          sessionId,
-          result: 'saved',
-          summary: summary || '',
-          minor: !!minor,
-        })
-        setStatus(translate('Saved; reloading and waiting for confirmation…'), 'ok')
-        setBusy(false)
-        window.setTimeout(() => location.reload(), 800)
+        completeSave(sessionId, requestId, revid, summary, minor)
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        setBusy(false)
-        send({type: 'save-result', sessionId, requestId, ok: false, error: message})
-        let conflictSent = false
-        if (isEditConflict(error)) {
-          try {
-            const latest = await latestPageForSession()
-            if (latest) conflictSent = reportConflict(latest, message)
-          } catch {}
-        }
-        if (!conflictSent) {
-          setStatus(translate('Save failed: {{ $1 }}', message), 'error')
-        }
+        await handleSaveError(sessionId, requestId, error)
       }
     }
 
-    // ---------- click -> locate ----------
     function onClick(event: MouseEvent): void {
       if (!session) return
       const target = event.target instanceof Element ? event.target : null
@@ -1854,7 +879,6 @@ export default {
       }
     }
 
-    // ---------- lifecycle ----------
     function createEditIcon(): SVGElement {
       const ns = 'http://www.w3.org/2000/svg'
       const svg = document.createElementNS(ns, 'svg')
@@ -1893,7 +917,7 @@ export default {
       disposed = true
       connected = false
       clearTimeout(reconnectTimer)
-      clearTimeout(previewTimer)
+      preview.cancel()
       for (const requestId of Object.keys(registerWaiters)) {
         clearTimeout(registerWaiters[requestId].timer)
         delete registerWaiters[requestId]
@@ -1909,9 +933,9 @@ export default {
       document.removeEventListener('click', onClick, true)
       window.removeEventListener('resize', syncBarHeight)
       ctx.toolbox?.removeButton(editButtonId)
-      restorePage()
+      preview.restorePage()
       endSession()
-      document.getElementById(barStyleId)?.remove()
+      document.getElementById(BAR_STYLE_ID)?.remove()
       document.getElementById('mwe-offline-notice')?.remove()
     })
 

@@ -221,11 +221,34 @@ function connectCdp(wsUrl) {
   });
 }
 
+const API_SHIM = `(() => {
+  const call = params => {
+    const url = new URL('/api.php', location.origin)
+    for (const [key, value] of Object.entries({format: 'json', formatversion: '2', ...params})) {
+      if (value !== undefined) url.searchParams.set(key, String(value))
+    }
+    return fetch(url, {credentials: 'include'}).then(reply => reply.json())
+  }
+  window.__e2eApi = {
+    get: params => call(params),
+    async postWithToken(_type, params) {
+      const token = (await call({action: 'query', meta: 'tokens', type: 'csrf'})).query.tokens.csrftoken
+      return fetch(new URL('/api.php', location.origin), {
+        method: 'POST',
+        credentials: 'include',
+        headers: {'content-type': 'application/x-www-form-urlencoded'},
+        body: new URLSearchParams({format: 'json', formatversion: '2', token, ...params}),
+      }).then(reply => reply.json())
+    },
+  }
+  return true
+})()`
+
 function injectionScript(pluginSource) {
   return `(() => {
   const translate = (key, ...args) =>
     String(key).replace(/\\{\\{\\s*\\$(\\d+)\\s*\\}\\}/g, (_, i) => args[Number(i) - 1] ?? '')
-  const api = () => new mw.Api()
+  const api = () => window.__e2eApi
   const revisionContent = rev => rev.slots?.main?.content ?? rev.content
   async function latest(title) {
     const reply = await api().get({
@@ -327,7 +350,7 @@ async function isWikiTab(wsUrl) {
   try {
     const reply = await Promise.race([
       cdp.send('Runtime.evaluate', {
-        expression: 'document.readyState === "complete" && !!window.mw && typeof mw.loader?.using === "function" && typeof mw.Api === "function" && !!mw.config.get("wgPageName")',
+        expression: 'document.readyState === "complete" && !!window.mw && !!mw.config.get("wgPageName")',
         returnByValue: true,
       }),
       sleep(5000).then(() => undefined),
@@ -423,6 +446,17 @@ async function main() {
     throw new Error(`timeout: ${label}`);
   };
 
+  /** Wait for the page shell and install a fetch-based API shim. The harness
+   * never depends on the wiki's ResourceLoader (extensions may block it). */
+  const preparePage = async () => {
+    await waitFor(
+      'page base',
+      () => evaluate('document.readyState === "complete" && !!window.mw && !window.__plugin && !!mw.config.get("wgPageName")'),
+      60000,
+    );
+    await evaluate(API_SHIM);
+  };
+
   try {
     // Background tabs can stall their ResourceLoader queue; activate first.
     await cdpJson(`/json/activate/${target.id}`).catch(() => undefined);
@@ -434,11 +468,7 @@ async function main() {
     // A leftover confirmation would keep the injected plugin idle.
     await evaluate("sessionStorage.removeItem('mwe-ipe-pending-save-confirmation'); true").catch(() => undefined);
     try {
-      await waitFor(
-        'page ready',
-        () => evaluate('document.readyState === "complete" && !!window.mw && !window.__plugin && typeof mw.loader?.using === "function" && typeof mw.Api === "function" && !!mw.config.get("wgPageName")'),
-        60000,
-      );
+      await preparePage();
     } catch (error) {
       const debug = await evaluate(`({
         ready: document.readyState,
@@ -451,8 +481,8 @@ async function main() {
       throw new Error(`${error.message}; state=${JSON.stringify(debug)}`);
     }
 
-    const startRevid = await evaluate(`new mw.Api().get({
-      action: 'query', formatversion: '2', prop: 'revisions', rvprop: 'ids',
+    const startRevid = await evaluate(`window.__e2eApi.get({
+      action: 'query', prop: 'revisions', rvprop: 'ids',
       rvslots: 'main', titles: mw.config.get('wgPageName'), rvlimit: '1',
     }).then(r => r.query.pages[0].revisions[0].revid)`);
 
@@ -492,13 +522,7 @@ async function main() {
     // A successful save always reloads the page; re-inject so the pending
     // confirmation and the next phase have a live plugin instance.
     const reinjectAfterReload = async () => {
-      await waitFor('page reload', async () => {
-        try {
-          return await evaluate('document.readyState === "complete" && !!window.mw && typeof mw.Api === "function" && !window.__plugin');
-        } catch {
-          return false;
-        }
-      }, 40000);
+      await preparePage();
       const again = await evaluate(injectionScript(pluginSource));
       if (again?.installed !== true) throw new Error('re-injection after reload failed');
     };
@@ -520,16 +544,13 @@ async function main() {
       try {
         await waitFor('verify tab ready', async () => {
           try {
-            return await verifyEvaluate('document.readyState === "complete" && !!window.mw && typeof mw.Api === "function" && !!mw.config.get("wgPageName")');
+            return await verifyEvaluate(`document.readyState === "complete" && location.origin === ${JSON.stringify(ORIGIN)}`);
           } catch {
             return false;
           }
         }, 40000);
-        return await verifyEvaluate(`new mw.Api().get({
-          action: 'query', formatversion: '2', prop: 'revisions',
-          rvprop: 'ids|content', rvslots: 'main', revids: String(${revid}),
-        }).then(r => {
-          const rev = r.query.pages[0].revisions[0]
+        return await verifyEvaluate(`fetch('/api.php?action=query&format=json&formatversion=2&prop=revisions&rvprop=ids%7Ccontent&rvslots=main&revids=${revid}', {credentials: 'include'}).then(r => r.json()).then(d => {
+          const rev = d.query.pages[0].revisions[0]
           const content = rev.slots?.main?.content ?? rev.content
           return {revid: rev.revid, hasMarker: content.includes(${JSON.stringify(marker)})}
         })`);
@@ -660,8 +681,8 @@ async function main() {
     }
     await waitFor('nochange temp file deleted', () => !fs.existsSync(nochange.fsPath), 15000);
     ok('nochange temp file deleted after confirmation', nochange.fsPath);
-    const latestAfter = await evaluate(`new mw.Api().get({
-      action: 'query', formatversion: '2', prop: 'revisions', rvprop: 'ids',
+    const latestAfter = await evaluate(`window.__e2eApi.get({
+      action: 'query', prop: 'revisions', rvprop: 'ids',
       rvslots: 'main', titles: mw.config.get('wgPageName'), rvlimit: '1',
     }).then(r => r.query.pages[0].revisions[0].revid)`);
     if (latestAfter === retryRevid) ok('nochange did not create a revision', `latest=${latestAfter}`);

@@ -37,7 +37,7 @@ const FORCE_RELOAD = process.argv.includes('--reload');
 const NOT_A_PAGE = /^(chrome|chrome-extension|devtools|edge|about):/iu;
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-const READY = 'document.readyState === "complete" && !!window.mw && typeof mw.Api === "function" && !!mw.config.get("wgPageName")';
+const READY = 'document.readyState === "complete" && !!window.mw && !!mw.config.get("wgPageName")';
 const IPE_READY = `${READY} && !!window.ipe && typeof window.ipe.plugin === "function"`;
 
 async function cdpJson(pathname, init) {
