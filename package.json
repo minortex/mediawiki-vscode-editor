@@ -28,7 +28,8 @@
       },
       {
         "command": "mediawikiEditor.save",
-        "title": "MediaWiki: 通过 InPageEdit 保存当前文件"
+        "title": "MediaWiki: 通过 InPageEdit 保存当前文件",
+        "icon": "$(cloud-upload)"
       },
       {
         "command": "mediawikiEditor.check",
@@ -44,11 +45,13 @@
       },
       {
         "command": "mediawikiEditor.openPage",
-        "title": "MediaWiki: 在浏览器中打开当前条目"
+        "title": "MediaWiki: 在浏览器中打开当前条目",
+        "icon": "$(link-external)"
       },
       {
         "command": "mediawikiEditor.closeSession",
-        "title": "MediaWiki: 关闭当前编辑会话"
+        "title": "MediaWiki: 关闭当前编辑会话",
+        "icon": "$(debug-disconnect)"
       },
       {
         "command": "mediawikiEditor.restoreDraft",
@@ -119,7 +122,26 @@
         "scopeName": "source.mediawiki",
         "path": "./syntaxes/mediawiki.tmLanguage.json"
       }
-    ]
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "mediawikiEditor.save",
+          "when": "mediawikiEditor.sessionActive",
+          "group": "navigation@1"
+        },
+        {
+          "command": "mediawikiEditor.openPage",
+          "when": "mediawikiEditor.sessionActive",
+          "group": "navigation@2"
+        },
+        {
+          "command": "mediawikiEditor.closeSession",
+          "when": "mediawikiEditor.sessionActive",
+          "group": "navigation@3"
+        }
+      ]
+    }
   },
   "dependencies": {
     "opencc-js": "^1.4.2",

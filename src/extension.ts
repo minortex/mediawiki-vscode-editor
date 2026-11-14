@@ -67,7 +67,18 @@ function stamp(date = new Date()): string {
   );
 }
 
+function updateSessionContext(): void {
+  const fsPath = vscode.window.activeTextEditor?.document.uri.fsPath;
+  const active = !!(fsPath && sessionManager?.idForPath(fsPath));
+  void vscode.commands.executeCommand(
+    'setContext',
+    'mediawikiEditor.sessionActive',
+    active,
+  );
+}
+
 function updateStatus(): void {
+  updateSessionContext();
   if (!statusBar) return;
   const connected = bridge?.connectionCount || 0;
   statusBar.text = connected
@@ -543,6 +554,7 @@ function activate(context: vscode.ExtensionContext): void {
       notifyDirty(doc);
     }),
     vscode.workspace.onDidOpenTextDocument(() => syncRestoredSessions()),
+    vscode.window.onDidChangeActiveTextEditor(() => updateSessionContext()),
     vscode.window.tabGroups.onDidChangeTabs(event => {
       for (const tab of event.closed) {
         if (tab.input instanceof vscode.TabInputText) {
